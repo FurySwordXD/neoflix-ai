@@ -6,6 +6,7 @@ import type {
   Story,
   StoryEvent,
 } from "@/lib/types";
+import { motionCaption } from "@/lib/mapMotion";
 import BiasBadge from "./BiasBadge";
 import {
   CATEGORY_COLORS,
@@ -88,6 +89,9 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
               {formatDate(event.timestamp)} · {event.location.name},{" "}
               {event.location.country}
             </p>
+            {event.motion && (
+              <p className="mt-1 text-[11px] text-sky-300">{motionCaption(event.motion)}</p>
+            )}
           </div>
           <button
             onClick={onClose}

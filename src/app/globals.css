@@ -166,6 +166,73 @@ body {
   }
 }
 
+/* Unit counters. The globe transforms the anchor; the badge scales inside it. */
+.map-badge-anchor {
+  width: 0;
+  height: 0;
+}
+.map-badge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--cat, #94a3b8);
+  border-radius: 7px;
+  background: rgba(12, 18, 32, 0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  color: #f8fafc;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.map-badge svg {
+  width: 15px;
+  height: 15px;
+}
+.map-badge.is-selected {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  z-index: 2;
+}
+.map-badge.is-selected svg {
+  width: 20px;
+  height: 20px;
+}
+.map-badge.is-dim {
+  opacity: 0.5;
+}
+.map-badge.is-battle {
+  animation: badge-strike 1.15s ease-in-out infinite;
+}
+@keyframes badge-strike {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  42% {
+    transform: translate(-50%, -50%) scale(1.14);
+  }
+}
+.map-tick {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  place-items: center;
+  margin-top: 3px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  background: #070b14;
+}
+
 /* Playback bar: fills the current step while autoplaying */
 @keyframes step-fill {
   from {

@@ -1,50 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import type { Story } from "@/lib/types";
 
 interface StoryQueryFormProps {
-  onStory: (story: Story, created: boolean) => void;
-  onBusy: (busy: boolean, query: string) => void;
+  onSearch: (query: string) => void;
+  busy?: boolean;
   variant?: "compact" | "hero";
 }
 
 /**
  * One field. A matching saved story opens immediately; otherwise the topic
- * is compiled into a new story. The reader never pastes links.
+ * is compiled into a new story on the map, event by event.
  */
 export default function StoryQueryForm({
-  onStory,
-  onBusy,
+  onSearch,
+  busy = false,
   variant = "compact",
 }: StoryQueryFormProps) {
   const [query, setQuery] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
+  function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const topic = query.trim();
     if (topic.length < 2 || busy) return;
-    setBusy(true);
-    setError(null);
-    onBusy(true, topic);
-    try {
-      const res = await fetch("/api/stories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: topic }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not open that story");
-      onStory(data.story as Story, Boolean(data.created));
-      setQuery("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open that story");
-    } finally {
-      setBusy(false);
-      onBusy(false, "");
-    }
+    setQuery("");
+    onSearch(topic);
   }
 
   return (
@@ -79,11 +59,6 @@ export default function StoryQueryForm({
       >
         {busy ? "Mapping…" : "Search"}
       </button>
-      {error && (
-        <p className="absolute left-0 top-[calc(100%+6px)] z-40 w-full rounded-md border border-red-900/60 bg-red-950/95 px-3 py-2 text-[11px] leading-snug text-red-200 shadow-lg">
-          {error}
-        </p>
-      )}
     </form>
   );
 }

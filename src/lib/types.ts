@@ -51,6 +51,44 @@ export interface GeoLocation {
   lng: number;
 }
 
+/** A named point on a map animation. Country is omitted; the event place already has one. */
+export interface MapPlace {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+/**
+ * How an event plays on the globe. Omitted when a single marker already
+ * tells the story (a speech, a vote, a signing).
+ */
+export type MotionActor =
+  | "troops"
+  | "people"
+  | "ships"
+  | "aircraft"
+  | "goods"
+  | "aid"
+  | "disease"
+  | "news";
+
+export type EventMotion = (
+  | { kind: "spread"; radius: number }
+  | { kind: "impact" }
+  | { kind: "flow"; from: MapPlace; to: MapPlace }
+  | { kind: "path"; points: MapPlace[] }
+  | { kind: "converge"; from: MapPlace[] }
+  | { kind: "radiate"; to: MapPlace[] }
+  /** Two-way traffic: trade, talks, swaps, a shuttle of aid. */
+  | { kind: "exchange"; with: MapPlace }
+  /** Surrounded from every side: a siege, blockade, cordon, or lockdown. */
+  | { kind: "encircle"; radius: number }
+  /** High arc through the air or space: missiles, rockets, airlifts, flights. */
+  | { kind: "launch"; to: MapPlace }
+  /** Directional push across an area: a storm track, plume, wave, or offensive. */
+  | { kind: "sweep"; heading: number; radius: number }
+) & { actor?: MotionActor };
+
 export interface StoryEvent {
   id: string;
   title: string;
@@ -62,6 +100,8 @@ export interface StoryEvent {
   category: "outbreak" | "response" | "science" | "politics" | "economy" | "milestone";
   /** Optional intensity figure used to size the globe marker (e.g. cases). */
   magnitude?: number;
+  /** Spatial action the globe animates, when the event can be illustrated that way. */
+  motion?: EventMotion;
   sources: SourceRef[];
 }
 

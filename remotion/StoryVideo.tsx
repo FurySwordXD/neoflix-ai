@@ -1,5 +1,6 @@
 import { Audio } from "@remotion/media";
 import { AbsoluteFill, Easing, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { motionCaption } from "../src/lib/mapMotion";
 import { CATEGORY_COLORS, CATEGORY_LABELS, LEAN_COLORS, formatMagnitude } from "../src/lib/ui";
 import { EarthScene } from "./EarthScene";
 import { formatLongDate, formatRange } from "./format";
@@ -124,6 +125,8 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
         activeIndex={activeIndex}
         aim={aim}
         shift={shift}
+        illustrateId={event?.id ?? null}
+        motionFrame={event ? Math.max(0, frame - event.from) : 0}
       />
       <AbsoluteFill
         style={{
@@ -312,6 +315,9 @@ function EventPanel({
         {formatLongDate(event.timestamp)} · {event.location.name}, {event.location.country}
         {event.magnitude ? ` · scale ${formatMagnitude(event.magnitude)}` : ""}
       </p>
+      {event.motion ? (
+        <p style={{ margin: "8px 0 0", fontSize: 15, color: "#7dd3fc" }}>{motionCaption(event.motion)}</p>
+      ) : null}
       <p
         style={{
           margin: "22px 0 0",

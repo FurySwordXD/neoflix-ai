@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motionCaption } from "@/lib/mapMotion";
 import type { Story, StoryEvent } from "@/lib/types";
 import { formatDate } from "@/lib/ui";
 import Timeline from "./Timeline";
@@ -38,17 +39,28 @@ const NARRATION_GAP_MS = 900;
 const NARRATION_RATES: Record<number, number> = { 1: 1, 2: 1.2, 4: 1.4 };
 
 interface StoryMapAppProps {
-  initialStory: Story;
+  story: Story;
   stories: Array<Pick<Story, "slug" | "title" | "status">>;
+  generating?: boolean;
+  generation?: number;
+  generationError?: string | null;
+  onGenerate: (query: string) => void;
 }
 
-export default function StoryMapApp({ initialStory, stories: initialStories }: StoryMapAppProps) {
-  const [story, setStory] = useState<Story>(initialStory);
+export default function StoryMapApp({
+  story,
+  stories: initialStories,
+  generating = false,
+  generation = 0,
+  generationError = null,
+  onGenerate,
+}: StoryMapAppProps) {
   const [stories, setStories] = useState(initialStories);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(false);
-  const [mapping, setMapping] = useState<{ query: string } | null>(null);
   const [view, setView] = useState<"interactive" | "immersive">("interactive");
+  const seenEventIds = useRef(new Set<string>());
+  const watchingGeneration = useRef(false);
 
   const events = story.events;
   const selected = useMemo(
@@ -62,13 +74,19 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
   const [speed, setSpeed] = useState(1);
   const stepMs = AUTOPLAY_MS / speed;
 
+  // A story still being mapped (or one that failed) is not saved, so it has no voice-over.
+  const unsaved = generating || story.slug === "generating";
   const [narrationOn, setNarrationOn] = useState(false);
   const narration = useNarration({
-    enabled: narrationOn,
+    enabled: narrationOn && !unsaved,
     paused: !autoplay,
     slug: story.slug,
-    event: selected,
-    nextEvent: selectedIndex >= 0 ? events[selectedIndex + 1] ?? null : events[0] ?? null,
+    event: unsaved ? null : selected,
+    nextEvent: unsaved
+      ? null
+      : selectedIndex >= 0
+        ? (events[selectedIndex + 1] ?? null)
+        : (events[0] ?? null),
     // Speech gets faster with playback speed, but stays intelligible.
     rate: NARRATION_RATES[speed] ?? 1,
   });
@@ -89,6 +107,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
   );
 
   const togglePlay = useCallback(() => {
+    if (generating) return;
     if (autoplay) {
       setAutoplay(false);
       return;
@@ -99,7 +118,49 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
       setSelectedId(events[0].id);
     }
     setAutoplay(true);
-  }, [autoplay, events, selectedIndex]);
+  }, [autoplay, events, selectedIndex, generating]);
+
+  // A new search starts clean. While events arrive, follow the newest one.
+  useEffect(() => {
+    seenEventIds.current = new Set();
+    watchingGeneration.current = false;
+    setSelectedId(null);
+    setAutoplay(false);
+    setView("interactive");
+  }, [generation]);
+
+  useEffect(() => {
+    if (!generating) {
+      if (!watchingGeneration.current) {
+        seenEventIds.current = new Set(events.map((event) => event.id));
+        return;
+      }
+      watchingGeneration.current = false;
+      setSelectedId((current) =>
+        current && events.some((event) => event.id === current)
+          ? current
+          : (events.at(-1)?.id ?? null)
+      );
+      seenEventIds.current = new Set(events.map((event) => event.id));
+      return;
+    }
+
+    const fresh = events.filter((event) => !seenEventIds.current.has(event.id));
+    for (const event of events) seenEventIds.current.add(event.id);
+    if (fresh.length === 0) return;
+    watchingGeneration.current = true;
+    setAutoplay(false);
+    setSelectedId(fresh[fresh.length - 1].id);
+  }, [generating, events]);
+
+  useEffect(() => {
+    if (generating || story.slug === "generating") return;
+    setStories((current) =>
+      current.some((item) => item.slug === story.slug)
+        ? current
+        : [...current, { slug: story.slug, title: story.title, status: story.status }]
+    );
+  }, [generating, story.slug, story.title, story.status]);
 
   // Autoplay: walk the story like a Pandemic playthrough. One timeout per
   // step keeps it in sync with manual jumps and the playback bar animation.
@@ -179,22 +240,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
           </div>
         </div>
         <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1 sm:justify-end">
-          <StoryQueryForm
-            onBusy={(busy, query) => setMapping(busy ? { query } : null)}
-            onStory={(next) => {
-              setStory(next);
-              setSelectedId(null);
-              setAutoplay(false);
-              setStories((current) =>
-                current.some((item) => item.slug === next.slug)
-                  ? current
-                  : [...current, { slug: next.slug, title: next.title, status: next.status }]
-              );
-              const url = new URL(window.location.href);
-              url.searchParams.set("story", next.slug);
-              window.history.replaceState(null, "", `${url.pathname}${url.search}`);
-            }}
-          />
+          <StoryQueryForm busy={generating} onSearch={onGenerate} />
           <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-slate-700">
             <button
               type="button"
@@ -211,8 +257,9 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
             <button
               type="button"
               onClick={() => setView("immersive")}
-              title="Preview the video"
-              className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${
+              disabled={unsaved}
+              title={generating ? "Available when the story is mapped" : "Preview the video"}
+              className={`px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 view === "immersive"
                   ? "bg-sky-500 text-white"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -221,7 +268,13 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
               Immersive
             </button>
           </div>
-          <RenderVideoButton slug={story.slug} />
+          {!unsaved && <RenderVideoButton slug={story.slug} />}
+          {generating ? (
+            <span className="shrink-0 rounded-full bg-sky-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-sky-300 ring-1 ring-sky-500/40">
+              <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400 align-middle" />
+              {story.events.length === 0 ? "Mapping" : `${story.events.length} placed`}
+            </span>
+          ) : (
           <span
             className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
               story.status === "ongoing"
@@ -231,10 +284,17 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
           >
             {story.status}
           </span>
+          )}
         </div>
       </header>
 
-      {view === "immersive" ? (
+      {generationError && (
+        <p className="z-30 border-b border-red-900/60 bg-red-950/90 px-5 py-2 text-xs text-red-200">
+          {generationError}
+        </p>
+      )}
+
+      {view === "immersive" && !unsaved ? (
         <ImmersivePreview key={story.slug} slug={story.slug} />
       ) : (
       /* Body: timeline | (globe + detail) over the playback bar */
@@ -246,6 +306,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
             onSelect={select}
             autoplay={autoplay}
             onTogglePlay={togglePlay}
+            generating={generating}
           />
         </div>
 
@@ -255,7 +316,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
               <GlobeView
                 story={story}
                 selected={selected}
-                revealedIndex={selectedIndex >= 0 ? selectedIndex : events.length - 1}
+                revealedIndex={generating || selectedIndex < 0 ? events.length - 1 : selectedIndex}
                 onSelect={select}
               />
 
@@ -264,12 +325,17 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
                 {selected ? (
                   <>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                      Focused event
+                      {generating ? "Just placed" : "Focused event"}
                     </p>
                     <p className="text-[13px] font-semibold text-white">{selected.title}</p>
                     <p className="text-[11px] text-slate-400">
                       {formatDate(selected.timestamp)} · {selected.location.name}
                     </p>
+                    {selected.motion && (
+                      <p className="mt-1 text-[11px] text-sky-300">
+                        {motionCaption(selected.motion)}
+                      </p>
+                    )}
                     {narration.scriptStatus !== "idle" && (
                       <p className="fade-up mt-2 border-t border-slate-800 pt-2 text-[12px] italic leading-snug text-slate-200">
                         {narrationOn && (
@@ -283,6 +349,15 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
                             : "Preparing voice-over…")}
                       </p>
                     )}
+                  </>
+                ) : generating ? (
+                  <>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-sky-400">
+                      Mapping this story
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Events land on the globe as they are placed.
+                    </p>
                   </>
                 ) : (
                   <>
@@ -317,6 +392,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
             stepMs={stepMs}
             onSelectIndex={selectIndex}
             onTogglePlay={togglePlay}
+            playDisabled={generating}
             onSpeedChange={setSpeed}
             onScrubStart={() => setAutoplay(false)}
             narrationOn={narrationOn}
@@ -326,19 +402,6 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
           />
         </div>
       </div>
-      )}
-
-      {mapping && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#050810]/80 backdrop-blur-sm">
-          <div className="max-w-sm px-6 text-center">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-400">Mapping the story</p>
-            <p className="mt-3 text-sm font-medium text-white">{mapping.query}</p>
-            <p className="mt-2 text-xs leading-relaxed text-slate-400">
-              Checking saved stories, then writing the timeline, places, and sources.
-            </p>
-            <div className="shimmer mx-auto mt-5 h-1.5 w-40 rounded-full" />
-          </div>
-        </div>
       )}
     </div>
   );

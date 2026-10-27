@@ -2,6 +2,10 @@ import { createRoot, extend, flushSync, useLoader, useThree } from "@react-three
 import { Suspense, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { Internals, staticFile, useCurrentFrame, useDelayRender, useRemotionEnvironment, useVideoConfig } from "remotion";
 import * as THREE from "three";
+import { arrowGrowth, createCampaignArrow } from "../src/lib/campaignArrow";
+import { motionLegs, type MotionLeg } from "../src/lib/mapMotion";
+import { actorSymbol, paintCounter, symbolFor, type MapSymbol } from "../src/lib/mapSymbols";
+import type { MapPlace } from "../src/lib/types";
 import { CATEGORY_COLORS } from "../src/lib/ui";
 import { latLngToVector, type GlobeAim } from "./geo";
 import type { VideoEvent } from "./types";
@@ -120,29 +124,25 @@ function Marker({
   frame: number;
 }) {
   const color = CATEGORY_COLORS[event.category];
+  const symbol = symbolFor(event.category, event.motion);
   const position = useMemo(
-    () => latLngToVector(event.location.lat, event.location.lng, 1.02),
+    () => latLngToVector(event.location.lat, event.location.lng, 1.03),
     [event.location.lat, event.location.lng]
   );
-  const quaternion = useMemo(() => {
-    const normal = position.clone().normalize();
-    return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
-  }, [position]);
-  const pulse = active ? 1 + Math.sin(frame * 0.28) * 0.16 : 1;
+  const texture = useMemo(() => {
+    const map = new THREE.CanvasTexture(paintCounter(symbol, color));
+    map.colorSpace = THREE.SRGBColorSpace;
+    return map;
+  }, [symbol, color]);
+  const battle = active && event.motion?.kind === "impact";
+  const pop = battle ? Math.min(1, frame / 8) : 1;
+  const beat = active ? 1 + Math.sin(frame * (battle ? 0.45 : 0.2)) * (battle ? 0.08 : 0.04) : 1;
+  const scale = (active ? 0.078 : 0.042) * pop * beat;
 
   return (
-    <group position={position}>
-      <mesh>
-        <sphereGeometry args={[active ? 0.028 : 0.012, 18, 18]} />
-        <meshBasicMaterial color={color} transparent opacity={active ? 1 : 0.75} />
-      </mesh>
-      {active ? (
-        <mesh quaternion={quaternion} scale={pulse}>
-          <ringGeometry args={[0.046, 0.06, 48]} />
-          <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.95} />
-        </mesh>
-      ) : null}
-    </group>
+    <sprite position={position} scale={scale} renderOrder={4}>
+      <spriteMaterial map={texture} transparent depthWrite={false} />
+    </sprite>
   );
 }
 
@@ -212,6 +212,134 @@ function Arc({ from, to, color, opacity }: { from: VideoEvent; to: VideoEvent; c
   );
 }
 
+function placeOf(event: VideoEvent): MapPlace {
+  return { name: event.location.name, lat: event.location.lat, lng: event.location.lng };
+}
+
+/** Expanding ring in the tangent plane. Radius is set during render so the frame is ready to capture. */
+function ShockRings({
+  lat,
+  lng,
+  maxDeg,
+  cycle,
+  color,
+  frame,
+}: {
+  lat: number;
+  lng: number;
+  maxDeg: number;
+  cycle: number;
+  color: string;
+  frame: number;
+}) {
+  const position = useMemo(() => latLngToVector(lat, lng, 1.025), [lat, lng]);
+  const quaternion = useMemo(() => {
+    const normal = position.clone().normalize();
+    return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  }, [position]);
+
+  return (
+    <group position={position} quaternion={quaternion}>
+      {[0, 0.5].map((phase) => {
+        const t = (frame / cycle + phase) % 1;
+        const degrees = 0.45 + t * maxDeg;
+        const radius = Math.sin((degrees * Math.PI) / 180);
+        return (
+          <mesh key={phase} scale={radius} renderOrder={3}>
+            <ringGeometry args={[0.78, 1, 64]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={(1 - t) * 0.9}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function CampaignRoute({
+  leg,
+  color,
+  token,
+  frame,
+}: {
+  leg: MotionLeg;
+  color: string;
+  token: MapSymbol;
+  frame: number;
+}) {
+  const { from, to, lofted, side, short, bare } = leg;
+  const arrow = useMemo(
+    () =>
+      createCampaignArrow({
+        from: latLngToVector(from.lat, from.lng, 1.012),
+        to: latLngToVector(to.lat, to.lng, 1.012),
+        color,
+        bold: true,
+        token,
+        lofted,
+        side,
+        short,
+        bare,
+      }),
+    [from.lat, from.lng, to.lat, to.lng, color, token, lofted, side, short, bare]
+  );
+  const period = short ? 42 : lofted ? 50 : 54;
+  arrow.setShown(arrowGrowth(frame / period, leg.delay ?? 0));
+  return <primitive object={arrow} />;
+}
+
+function MapMotion({ event, frame }: { event: VideoEvent; frame: number }) {
+  const motion = event.motion;
+  if (!motion) return null;
+  const origin = placeOf(event);
+  const color = CATEGORY_COLORS[event.category];
+  if (motion.kind === "spread" || motion.kind === "impact") {
+    return (
+      <ShockRings
+        lat={origin.lat}
+        lng={origin.lng}
+        maxDeg={motion.kind === "spread" ? motion.radius : 4.5}
+        cycle={motion.kind === "spread" ? 56 : 20}
+        color={color}
+        frame={frame}
+      />
+    );
+  }
+  const legs = motionLegs(origin, motion);
+  const token = actorSymbol(motion);
+  return (
+    <group>
+      {motion.kind === "encircle" ? (
+        <ShockRings
+          lat={origin.lat}
+          lng={origin.lng}
+          maxDeg={motion.radius * 1.05}
+          cycle={46}
+          color={color}
+          frame={frame}
+        />
+      ) : null}
+      {motion.kind === "launch" ? (
+        <ShockRings lat={motion.to.lat} lng={motion.to.lng} maxDeg={2.6} cycle={40} color={color} frame={frame} />
+      ) : null}
+      {legs.map((leg) => (
+        <CampaignRoute
+          key={`${leg.from.lat},${leg.from.lng}-${leg.to.lat},${leg.to.lng}`}
+          leg={leg}
+          color={color}
+          token={token}
+          frame={frame}
+        />
+      ))}
+    </group>
+  );
+}
+
 interface EarthSceneProps {
   events: VideoEvent[];
   frame: number;
@@ -219,6 +347,8 @@ interface EarthSceneProps {
   activeIndex: number;
   aim: GlobeAim;
   shift: number;
+  illustrateId: string | null;
+  motionFrame: number;
 }
 
 /**
@@ -316,7 +446,16 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
   );
 }
 
-export function EarthScene({ events, frame, revealed, activeIndex, aim, shift }: EarthSceneProps) {
+export function EarthScene({
+  events,
+  frame,
+  revealed,
+  activeIndex,
+  aim,
+  shift,
+  illustrateId,
+  motionFrame,
+}: EarthSceneProps) {
   const { width, height } = useVideoConfig();
   // XYZ matches aimAt(): pitch first, then yaw, lands the target on the camera.
   const rotation = useMemo(
@@ -324,6 +463,7 @@ export function EarthScene({ events, frame, revealed, activeIndex, aim, shift }:
     [aim.pitch, aim.yaw]
   );
   const visible = events.slice(0, revealed);
+  const illustrated = illustrateId ? events.find((event) => event.id === illustrateId) : null;
 
   return (
     <GlobeCanvas width={width} height={height}>
@@ -351,6 +491,7 @@ export function EarthScene({ events, frame, revealed, activeIndex, aim, shift }:
               />
             );
           })}
+          {illustrated?.motion ? <MapMotion event={illustrated} frame={motionFrame} /> : null}
         </group>
         <Atmosphere />
       </group>

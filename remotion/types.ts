@@ -1,4 +1,4 @@
-import type { PoliticalLean, StoryEvent } from "../src/lib/types";
+import type { EventMotion, PoliticalLean, StoryEvent } from "../src/lib/types";
 
 export const FPS = 30;
 
@@ -17,6 +17,7 @@ export interface VideoEvent {
   category: StoryEvent["category"];
   magnitude?: number;
   location: StoryEvent["location"];
+  motion?: EventMotion;
   sources: VideoSource[];
   /** Spoken line, when a voice-over script has been generated. */
   script: string | null;

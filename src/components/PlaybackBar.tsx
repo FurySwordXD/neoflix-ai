@@ -16,6 +16,8 @@ interface PlaybackBarProps {
   stepMs: number;
   onSelectIndex: (index: number) => void;
   onTogglePlay: () => void;
+  /** Play stays off while a story is still being mapped. */
+  playDisabled?: boolean;
   onSpeedChange: (speed: number) => void;
   onScrubStart: () => void;
   narrationOn: boolean;
@@ -44,6 +46,7 @@ export default function PlaybackBar({
   stepMs,
   onSelectIndex,
   onTogglePlay,
+  playDisabled = false,
   onSpeedChange,
   onScrubStart,
   narrationOn,
@@ -103,12 +106,13 @@ export default function PlaybackBar({
             ⏮
           </button>
           <button
-            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition ${
+            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
               playing
                 ? "bg-sky-500 text-white shadow-[0_0_16px_rgba(56,189,248,0.5)] hover:bg-sky-400"
                 : "bg-slate-100 text-slate-900 hover:bg-white"
             }`}
             onClick={onTogglePlay}
+            disabled={playDisabled}
             title="Play / pause (space)"
           >
             {playing ? "❚❚" : "▶"}

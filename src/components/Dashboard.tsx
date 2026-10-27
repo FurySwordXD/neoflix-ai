@@ -4,13 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findExistingStory } from "@/lib/storyMatch";
 import type { StoryMeta } from "@/lib/stories";
-import type { Story } from "@/lib/types";
 import {
   INTERESTS,
   REGIONS,
   TRENDS,
   recommend,
-  topicsForSlug,
   type TrendItem,
 } from "@/lib/recommend";
 import { useReaderProfile, withOpen } from "@/lib/profile";
@@ -18,6 +16,7 @@ import StoryQueryForm from "./StoryQueryForm";
 
 interface DashboardProps {
   metas: StoryMeta[];
+  onGenerate: (query: string, topics?: string[]) => void;
 }
 
 interface Draft {
@@ -34,14 +33,12 @@ function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
 }
 
-export default function Dashboard({ metas }: DashboardProps) {
+export default function Dashboard({ metas, onGenerate }: DashboardProps) {
   const router = useRouter();
   const [profile, update] = useReaderProfile();
   const [ready, setReady] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [mapping, setMapping] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setReady(true);
@@ -78,29 +75,13 @@ export default function Dashboard({ metas }: DashboardProps) {
     setEditing(true);
   }
 
-  async function openTrend(item: TrendItem) {
-    if (mapping) return;
+  function openTrend(item: TrendItem) {
     const existing = savedSlug(item, metas);
     if (existing) {
       go(existing, item.topics);
       return;
     }
-    setMapping(item.query);
-    setError(null);
-    try {
-      const res = await fetch("/api/stories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: item.query }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not map that story");
-      const story = data.story as Story;
-      go(story.slug, item.topics.length > 0 ? item.topics : topicsForSlug(story.slug));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not map that story");
-      setMapping(null);
-    }
+    onGenerate(item.query, item.topics);
   }
 
   const interestLabels = INTERESTS.filter((item) => profile.interests.includes(item.id)).map(
@@ -242,11 +223,7 @@ export default function Dashboard({ metas }: DashboardProps) {
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-8 pb-16">
-        <StoryQueryForm
-          variant="hero"
-          onBusy={(busy, query) => setMapping(busy ? query : null)}
-          onStory={(story) => go(story.slug, topicsForSlug(story.slug))}
-        />
+        <StoryQueryForm variant="hero" onSearch={(query) => onGenerate(query)} />
 
         <section>
           <h2 className="text-sm font-semibold text-white">
@@ -258,12 +235,6 @@ export default function Dashboard({ metas }: DashboardProps) {
             </p>
           )}
 
-          {error && (
-            <p className="mt-4 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
-              {error}
-            </p>
-          )}
-
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {ranked.map(({ item, reasons }) => {
               const readyCard = savedSlug(item, metas);
@@ -272,7 +243,6 @@ export default function Dashboard({ metas }: DashboardProps) {
                 <button
                   key={item.id}
                   type="button"
-                  disabled={mapping !== null}
                   onClick={() => openTrend(item)}
                   className="fade-up flex h-full flex-col rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-left transition hover:border-sky-700/70 hover:bg-slate-900/80 disabled:opacity-60"
                 >
@@ -308,16 +278,6 @@ export default function Dashboard({ metas }: DashboardProps) {
           </div>
         </section>
       </main>
-
-      {mapping && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#050810]/80 backdrop-blur-sm">
-          <div className="max-w-sm px-6 text-center">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-400">Mapping the story</p>
-            <p className="mt-3 text-sm font-medium text-white">{mapping}</p>
-            <div className="shimmer mx-auto mt-5 h-1.5 w-40 rounded-full" />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

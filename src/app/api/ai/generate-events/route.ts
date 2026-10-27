@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { compileMotion } from "@/lib/mapMotion";
 import { getNebiusClient, NEBIUS_MODEL, parseJsonResponse } from "@/lib/nebius";
 import type { GeneratedEvent } from "@/lib/types";
 
@@ -54,10 +55,11 @@ Hard rules:
 - LOCATION: resolve each event to a real-world place with lat/lng coordinates and a human name.
 - CATEGORY: one of outbreak | response | science | politics | economy | milestone.
 - MAGNITUDE: if the material contains a scale figure (cases, deaths, dollars), use it; otherwise omit.
+- MOTION: when the sources describe a spread, strike, movement, siege, exchange, or gathering, add motion so the globe can animate it. Omit motion for a stationary act. A place is {"name","lat","lng"}. Use one of: {"kind":"impact"} (battle, blast, quake), {"kind":"spread","radius":deg} (reach in degrees, 1 ≈ 111 km), {"kind":"sweep","heading":0-359,"radius":deg} (directional push: storm track, offensive, plume), {"kind":"encircle","radius":1-6} (siege, blockade, lockdown), {"kind":"flow","to":place} or {"kind":"flow","from":place}, {"kind":"path","points":[3–6 places]}, {"kind":"converge","from":[2–4 places]}, {"kind":"radiate","to":[2–4 places]}, {"kind":"exchange","with":place} (trade, talks, swaps), {"kind":"launch","to":place} (missile, rocket, airlift). Optionally add "actor": "troops" | "people" | "ships" | "aircraft" | "goods" | "aid" | "disease" | "news". Vary the kinds across events. Places must be named in the material or be the obvious real location of a fact the material states. Do not invent a route the sources do not support.
 - Group related source material into 1-5 events, in chronological order. Merge the given sources across events where they corroborate the same occurrence.
 
 Output STRICT JSON matching this TypeScript type, with no commentary:
-{ "events": Array<{ title: string; summary: string; location: { name: string; country: string; lat: number; lng: number }; timestamp: string; category: string; magnitude?: number; sources: Array<{ publisher: string; title: string; url: string; publishedAt: string; bias: { politicalLean: string; factualRating: string; note: string }; corroborates: string[] }> }> }`;
+{ "events": Array<{ title: string; summary: string; location: { name: string; country: string; lat: number; lng: number }; timestamp: string; category: string; magnitude?: number; motion?: object; sources: Array<{ publisher: string; title: string; url: string; publishedAt: string; bias: { politicalLean: string; factualRating: string; note: string }; corroborates: string[] }> }> }`;
 
   try {
     const client = getNebiusClient();
@@ -80,7 +82,14 @@ Output STRICT JSON matching this TypeScript type, with no commentary:
       );
     }
 
-    return NextResponse.json({ events: parsed.events });
+    const events = parsed.events.map((event) => {
+      const motion = compileMotion(event.motion, event.location);
+      if (motion) return { ...event, motion };
+      const { motion: _dropped, ...rest } = event;
+      return rest;
+    });
+
+    return NextResponse.json({ events });
   } catch (err) {
     const message = err instanceof Error ? err.message : "AI request failed";
     return NextResponse.json({ error: message }, { status: 502 });

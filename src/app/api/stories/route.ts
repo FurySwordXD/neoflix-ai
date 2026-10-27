@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateStory } from "@/lib/generateStory";
-import { listStories, rememberQuery } from "@/lib/stories";
+import { generateStoryStream } from "@/lib/generateStory";
+import { listStories } from "@/lib/stories";
+import type { StoryStreamMessage } from "@/lib/storyStream";
 
 export const maxDuration = 120;
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   return NextResponse.json({ stories: listStories() });
 }
 
-/** Open a saved story for this query, or generate and save one. */
+/**
+ * Open a saved story for this query, or generate one.
+ * The body is newline-delimited JSON: meta, then one message per event,
+ * then the saved story.
+ */
 export async function POST(req: NextRequest) {
   let query = "";
   try {
@@ -25,13 +31,55 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  try {
-    const result = await generateStory(query);
-    if (!result.created) rememberQuery(result.story.slug, query);
-    return NextResponse.json(result, { status: result.created ? 201 : 200 });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Could not create that story";
-    const status = message === "NEBIUS_API_KEY is not set" ? 503 : 502;
-    return NextResponse.json({ error: message }, { status });
-  }
+  const encoder = new TextEncoder();
+  const generator = generateStoryStream(query, req.signal);
+  let closed = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (message: StoryStreamMessage) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+      };
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // The client already went away.
+        }
+      };
+
+      try {
+        for await (const message of generator) {
+          send(message);
+        }
+        finish();
+      } catch (err) {
+        if (req.signal.aborted) {
+          finish();
+          return;
+        }
+        const message = err instanceof Error ? err.message : "Could not create that story";
+        try {
+          send({ type: "error", error: message });
+        } catch {
+          // The client already went away.
+        }
+        finish();
+      }
+    },
+    cancel() {
+      closed = true;
+      void generator.return(undefined);
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

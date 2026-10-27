@@ -94,6 +94,7 @@ async function stageStory(slug) {
       category: event.category,
       ...(event.magnitude ? { magnitude: event.magnitude } : {}),
       location: event.location,
+      ...(event.motion ? { motion: event.motion } : {}),
       sources: (event.sources ?? []).map((source) => ({
         id: source.id,
         publisher: source.publisher,
