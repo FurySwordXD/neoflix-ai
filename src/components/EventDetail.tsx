@@ -169,7 +169,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g. When did human-to-human spread outside China first appear?"
+              placeholder="e.g. What's new in this story?"
               className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
             />
             <button

@@ -67,6 +67,7 @@ Return STRICT JSON only, no markdown, with this shape:
 
 Rules:
 - Real events only. If the topic is not a documented news or history story, return {"error":"short reason"} instead.
+- If the ending has not happened yet, still map the story. Use the events already on the record — appointments, primaries, special elections, court rulings, campaign turning points — set status to "ongoing", and stop at the latest documented one. Do not invent a result, and do not refuse only because Election Day or the finale is still ahead.
 - 8 events, chronological, spanning the arc from the first turning point to the latest decisive one. Fewer only if the record itself is short; never fewer than 5.
 - Unopinionated, fact-first, vivid. No invented numbers, dates, or quotes.
 - Each event needs a real city or place with accurate lat/lng, and 2 sources from real outlets.

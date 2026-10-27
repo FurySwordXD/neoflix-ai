@@ -5,10 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "video": "node remotion/cli.mjs studio",
+    "render:story": "node remotion/cli.mjs render",
+    "stage:stories": "node remotion/cli.mjs stage"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.74.0",
+    "@remotion/player": "^4.0.539",
+    "@remotion/web-renderer": "4.0.539",
     "next": "^16.4.3",
     "openai": "^7.45.1",
     "react": "^19.3.1",
@@ -17,11 +22,16 @@
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "@remotion/cli": "^4.0.539",
+    "@remotion/media": "^4.0.539",
+    "@remotion/three": "^4.0.539",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
+    "remotion": "^4.0.539",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2"
   }

@@ -8,6 +8,7 @@ import Timeline from "./Timeline";
 import EventDetail from "./EventDetail";
 import PlaybackBar from "./PlaybackBar";
 import StoryQueryForm from "./StoryQueryForm";
+import RenderVideoButton from "./RenderVideoButton";
 import { useNarration } from "./useNarration";
 
 const GlobeView = dynamic(() => import("./GlobeView"), {
@@ -16,6 +17,17 @@ const GlobeView = dynamic(() => import("./GlobeView"), {
     <div className="flex h-full w-full items-center justify-center">
       <p className="animate-pulse text-xs uppercase tracking-[0.3em] text-slate-600">
         Spinning up the globe…
+      </p>
+    </div>
+  ),
+});
+
+const ImmersivePreview = dynamic(() => import("./ImmersivePreview"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex min-h-0 flex-1 items-center justify-center">
+      <p className="animate-pulse text-xs uppercase tracking-[0.3em] text-slate-600">
+        Opening the preview…
       </p>
     </div>
   ),
@@ -36,6 +48,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(false);
   const [mapping, setMapping] = useState<{ query: string } | null>(null);
+  const [view, setView] = useState<"interactive" | "immersive">("interactive");
 
   const events = story.events;
   const selected = useMemo(
@@ -112,8 +125,14 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
     narrationFinished,
   ]);
 
-  // Keyboard: space plays/pauses, arrows step through events.
   useEffect(() => {
+    if (view === "immersive") setAutoplay(false);
+  }, [view]);
+
+  // Keyboard: space plays/pauses, arrows step through events.
+  // Immersive preview uses those keys for the video player.
+  useEffect(() => {
+    if (view !== "interactive") return;
     function onKey(e: KeyboardEvent) {
       const target = e.target;
       if (
@@ -135,19 +154,23 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [togglePlay, selectIndex, selectedIndex, events.length]);
+  }, [view, togglePlay, selectIndex, selectedIndex, events.length]);
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#050810]">
       {/* Header */}
       <header className="z-30 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-950/80 px-4 py-3 backdrop-blur sm:px-5">
         <div className="flex min-w-0 items-center gap-4 lg:max-w-[46%]">
-          <div className="flex items-center gap-2">
+          <a
+            href="/"
+            aria-label="Dashboard"
+            className="flex items-center gap-2 rounded-md hover:text-white"
+          >
             <span className="text-lg">🌍</span>
             <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
               WorldNews
             </span>
-          </div>
+          </a>
           <div className="hidden min-w-0 sm:block">
             <h1 className="truncate text-sm font-semibold text-white">
               {story.title}
@@ -172,6 +195,33 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
               window.history.replaceState(null, "", `${url.pathname}${url.search}`);
             }}
           />
+          <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-slate-700">
+            <button
+              type="button"
+              onClick={() => setView("interactive")}
+              title="Explore the map and timeline"
+              className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                view === "interactive"
+                  ? "bg-slate-100 text-slate-900"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              Interactive
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("immersive")}
+              title="Preview the video"
+              className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                view === "immersive"
+                  ? "bg-sky-500 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              Immersive
+            </button>
+          </div>
+          <RenderVideoButton slug={story.slug} />
           <span
             className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
               story.status === "ongoing"
@@ -184,7 +234,10 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
         </div>
       </header>
 
-      {/* Body: timeline | (globe + detail) over the playback bar */}
+      {view === "immersive" ? (
+        <ImmersivePreview key={story.slug} slug={story.slug} />
+      ) : (
+      /* Body: timeline | (globe + detail) over the playback bar */
       <div className="relative flex min-h-0 flex-1">
         <div className="scroll-slim z-10 w-[22rem] min-w-[19rem] shrink-0 border-r border-slate-800 bg-slate-950/70 backdrop-blur">
           <Timeline
@@ -273,6 +326,7 @@ export default function StoryMapApp({ initialStory, stories: initialStories }: S
           />
         </div>
       </div>
+      )}
 
       {mapping && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#050810]/80 backdrop-blur-sm">
