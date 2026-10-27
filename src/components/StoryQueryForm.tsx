@@ -59,7 +59,7 @@ export default function StoryQueryForm({
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Name a story — COVID-19, the Berlin Wall…"
+        placeholder="Search for a story"
         disabled={busy}
         aria-label="Story topic"
         className={
@@ -77,7 +77,7 @@ export default function StoryQueryForm({
             : "shrink-0 rounded-md bg-violet-600/90 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
         }
       >
-        {busy ? "Mapping…" : "Map"}
+        {busy ? "Mapping…" : "Search"}
       </button>
       {error && (
         <p className="absolute left-0 top-[calc(100%+6px)] z-40 w-full rounded-md border border-red-900/60 bg-red-950/95 px-3 py-2 text-[11px] leading-snug text-red-200 shadow-lg">
