@@ -248,11 +248,10 @@ export default function StoryMapApp({
               type="button"
               onClick={() => setView("interactive")}
               title="Explore the map and timeline"
-              className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                view === "interactive"
+              className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${view === "interactive"
                   ? "bg-slate-100 text-slate-900"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
+                }`}
             >
               Interactive
             </button>
@@ -261,11 +260,10 @@ export default function StoryMapApp({
               onClick={() => setView("immersive")}
               disabled={unsaved}
               title={generating ? "Available when the story is mapped" : "Preview the video"}
-              className={`px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                view === "immersive"
+              className={`px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${view === "immersive"
                   ? "bg-sky-500 text-white"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
+                }`}
             >
               Immersive
             </button>
@@ -278,11 +276,10 @@ export default function StoryMapApp({
             </span>
           ) : (
             <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                story.status === "ongoing"
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${story.status === "ongoing"
                   ? "bg-red-500/15 text-red-300 ring-1 ring-red-500/40"
                   : "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30"
-              }`}
+                }`}
             >
               {story.status}
             </span>
@@ -296,7 +293,7 @@ export default function StoryMapApp({
             <span className="shrink-0 font-semibold uppercase tracking-wide text-sky-400">
               Agent
             </span>
-            {steps.map((step, i) => (
+            {steps.reverse().map((step, i) => (
               <span
                 key={i}
                 className={
@@ -324,111 +321,111 @@ export default function StoryMapApp({
       {view === "immersive" && !unsaved ? (
         <ImmersivePreview key={story.slug} slug={story.slug} />
       ) : (
-      /* Body: timeline | (globe + detail) over the playback bar */
-      <div className="relative flex min-h-0 flex-1">
-        <div className="scroll-slim z-10 w-[22rem] min-w-[19rem] shrink-0 border-r border-slate-800 bg-slate-950/70 backdrop-blur">
-          <Timeline
-            story={story}
-            selectedId={selectedId}
-            onSelect={select}
-            autoplay={autoplay}
-            onTogglePlay={togglePlay}
-            generating={generating}
-          />
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative flex min-h-0 flex-1">
-            <div className="relative min-w-0 flex-1">
-              <GlobeView
-                story={story}
-                selected={selected}
-                revealedIndex={generating || selectedIndex < 0 ? events.length - 1 : selectedIndex}
-                onSelect={select}
-              />
-
-              {/* Status strip over the globe */}
-              <div className="pointer-events-none absolute left-3 top-3 max-w-[min(60%,26rem)] rounded-lg border border-slate-800/80 bg-slate-950/70 px-3 py-2 backdrop-blur">
-                {selected ? (
-                  <>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                      {generating ? "Just placed" : "Focused event"}
-                    </p>
-                    <p className="text-[13px] font-semibold text-white">{selected.title}</p>
-                    <p className="text-[11px] text-slate-400">
-                      {formatDate(selected.timestamp)} · {selected.location.name}
-                    </p>
-                    {selected.motion && (
-                      <p className="mt-1 text-[11px] text-sky-300">
-                        {motionCaption(selected.motion)}
-                      </p>
-                    )}
-                    {narration.scriptStatus !== "idle" && (
-                      <p className="fade-up mt-2 border-t border-slate-800 pt-2 text-[12px] italic leading-snug text-slate-200">
-                        {narrationOn && (
-                          <span className="mr-1 not-italic text-sky-400">
-                            {narration.status === "playing" ? "🔊" : "🔈"}
-                          </span>
-                        )}
-                        {narration.script ??
-                          (narration.scriptStatus === "error"
-                            ? "Voice-over unavailable."
-                            : "Preparing voice-over…")}
-                      </p>
-                    )}
-                  </>
-                ) : generating ? (
-                  <>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-sky-400">
-                      Mapping this story
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Events land on the globe as they are placed.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                      {stories.length > 1 ? `${stories.length} stories tracked` : "Story tracked"}
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Pick an event, press ▶ or hit space
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {selected && (
-              <EventDetail
-                story={story}
-                event={selected}
-                onClose={() => {
-                  setAutoplay(false);
-                  setSelectedId(null);
-                }}
-              />
-            )}
+        /* Body: timeline | (globe + detail) over the playback bar */
+        <div className="relative flex min-h-0 flex-1">
+          <div className="scroll-slim z-10 w-[22rem] min-w-[19rem] shrink-0 border-r border-slate-800 bg-slate-950/70 backdrop-blur">
+            <Timeline
+              story={story}
+              selectedId={selectedId}
+              onSelect={select}
+              autoplay={autoplay}
+              onTogglePlay={togglePlay}
+              generating={generating}
+            />
           </div>
 
-          <PlaybackBar
-            events={events}
-            selectedIndex={selectedIndex}
-            playing={autoplay}
-            speed={speed}
-            stepMs={stepMs}
-            onSelectIndex={selectIndex}
-            onTogglePlay={togglePlay}
-            playDisabled={generating}
-            onSpeedChange={setSpeed}
-            onScrubStart={() => setAutoplay(false)}
-            narrationOn={narrationOn}
-            narrationStatus={narration.status}
-            onToggleNarration={() => setNarrationOn((on) => !on)}
-            stepProgress={narrationOn ? narration.progress : null}
-          />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 flex-1">
+              <div className="relative min-w-0 flex-1">
+                <GlobeView
+                  story={story}
+                  selected={selected}
+                  revealedIndex={generating || selectedIndex < 0 ? events.length - 1 : selectedIndex}
+                  onSelect={select}
+                />
+
+                {/* Status strip over the globe */}
+                <div className="pointer-events-none absolute left-3 top-3 max-w-[min(60%,26rem)] rounded-lg border border-slate-800/80 bg-slate-950/70 px-3 py-2 backdrop-blur">
+                  {selected ? (
+                    <>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                        {generating ? "Just placed" : "Focused event"}
+                      </p>
+                      <p className="text-[13px] font-semibold text-white">{selected.title}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {formatDate(selected.timestamp)} · {selected.location.name}
+                      </p>
+                      {selected.motion && (
+                        <p className="mt-1 text-[11px] text-sky-300">
+                          {motionCaption(selected.motion)}
+                        </p>
+                      )}
+                      {narration.scriptStatus !== "idle" && (
+                        <p className="fade-up mt-2 border-t border-slate-800 pt-2 text-[12px] italic leading-snug text-slate-200">
+                          {narrationOn && (
+                            <span className="mr-1 not-italic text-sky-400">
+                              {narration.status === "playing" ? "🔊" : "🔈"}
+                            </span>
+                          )}
+                          {narration.script ??
+                            (narration.scriptStatus === "error"
+                              ? "Voice-over unavailable."
+                              : "Preparing voice-over…")}
+                        </p>
+                      )}
+                    </>
+                  ) : generating ? (
+                    <>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-sky-400">
+                        Mapping this story
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Events land on the globe as they are placed.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                        {stories.length > 1 ? `${stories.length} stories tracked` : "Story tracked"}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Pick an event, press ▶ or hit space
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {selected && (
+                <EventDetail
+                  story={story}
+                  event={selected}
+                  onClose={() => {
+                    setAutoplay(false);
+                    setSelectedId(null);
+                  }}
+                />
+              )}
+            </div>
+
+            <PlaybackBar
+              events={events}
+              selectedIndex={selectedIndex}
+              playing={autoplay}
+              speed={speed}
+              stepMs={stepMs}
+              onSelectIndex={selectIndex}
+              onTogglePlay={togglePlay}
+              playDisabled={generating}
+              onSpeedChange={setSpeed}
+              onScrubStart={() => setAutoplay(false)}
+              narrationOn={narrationOn}
+              narrationStatus={narration.status}
+              onToggleNarration={() => setNarrationOn((on) => !on)}
+              stepProgress={narrationOn ? narration.progress : null}
+            />
+          </div>
         </div>
-      </div>
       )}
     </div>
   );

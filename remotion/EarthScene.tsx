@@ -1,5 +1,5 @@
 import { createRoot, extend, flushSync, useLoader, useThree } from "@react-three/fiber";
-import { Suspense, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { Suspense, useInsertionEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { Internals, staticFile, useCurrentFrame, useDelayRender, useRemotionEnvironment, useVideoConfig } from "remotion";
 import * as THREE from "three";
 import { arrowGrowth, createCampaignArrow } from "../src/lib/campaignArrow";
@@ -376,11 +376,30 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
   const { isRendering } = useRemotionEnvironment();
   const { delayRender, continueRender } = useDelayRender();
 
+  // Release the root in an insertion-effect cleanup: these survive StrictMode
+  // effect replay and HMR, unlike useLayoutEffect cleanups which unmount the
+  // root, force-loss the WebGL context, and break the immediately-replayed
+  // createRoot on the same canvas ("Cannot read properties of null (reading
+  // 'precision')" from a context-lost renderer).
+  useInsertionEffect(() => {
+    return () => {
+      const root = rootRef.current;
+      rootRef.current = null;
+      root?.unmount();
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const root = createRoot(canvas);
-    rootRef.current = root;
+    // Reuse the root across effect re-runs (size changes, StrictMode replay):
+    // createRoot twice on one canvas triggers the "should only be called once"
+    // path, and a fresh renderer on a disposed canvas loses its context.
+    let root = rootRef.current;
+    if (!root) {
+      root = createRoot(canvas);
+      rootRef.current = root;
+    }
     root
       .configure({
         size: { width, height, top: 0, left: 0 },
@@ -396,12 +415,8 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
         },
       })
       .catch((err: unknown) => {
-        console.error(err);
+        console.error("[EarthScene] Globe canvas configure failed:", err);
       });
-    return () => {
-      if (rootRef.current === root) rootRef.current = null;
-      root.unmount();
-    };
   }, [width, height]);
 
   useLayoutEffect(() => {
@@ -429,7 +444,7 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
       });
     };
     if (root && root.ready.status === "fulfilled") draw();
-    else root?.ready.then(() => draw());
+    else root?.ready.then(() => draw(), () => {});
     return () => {
       cancelled = true;
       release();

@@ -3,6 +3,7 @@ import { AbsoluteFill, Easing, interpolate, Sequence, staticFile, useCurrentFram
 import { motionCaption } from "../src/lib/mapMotion";
 import { CATEGORY_COLORS, CATEGORY_LABELS, LEAN_COLORS, formatMagnitude } from "../src/lib/ui";
 import { EarthScene } from "./EarthScene";
+import { captionPages, activeCaptionPage } from "./captions";
 import { formatLongDate, formatRange } from "./format";
 import { aimAt, lerpAngle } from "./geo";
 import type { VideoEvent, VideoManifest } from "./types";
@@ -147,7 +148,12 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
       ) : null}
 
       {event?.script && panelOpacity > 0.01 ? (
-        <Caption text={event.script} opacity={panelOpacity} />
+        <Caption
+          text={event.script}
+          elapsed={frame - event.from}
+          durationInFrames={event.durationInFrames}
+          opacity={panelOpacity}
+        />
       ) : null}
 
       {frame >= titleFrames && frame < endStart ? (
@@ -369,7 +375,20 @@ function EventPanel({
   );
 }
 
-function Caption({ text, opacity }: { text: string; opacity: number }) {
+function Caption({
+  text,
+  elapsed,
+  durationInFrames,
+  opacity,
+}: {
+  text: string;
+  elapsed: number;
+  durationInFrames: number;
+  opacity: number;
+}) {
+  const pages = captionPages(text, durationInFrames);
+  const page = activeCaptionPage(pages, elapsed);
+  if (!page) return null;
   return (
     <div
       style={{
@@ -395,7 +414,9 @@ function Caption({ text, opacity }: { text: string; opacity: number }) {
           textAlign: "center",
         }}
       >
-        {text}
+        {page.lines.map((line, index) => (
+          <div key={index}>{line}</div>
+        ))}
       </div>
     </div>
   );
