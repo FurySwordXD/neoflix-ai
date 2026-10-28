@@ -111,10 +111,28 @@ function spokenLead(event: StoryEvent, previous: StoryEvent | null): string {
   return parts.length ? `${parts.join(". ")}.` : "";
 }
 
+/**
+ * The documentary script for one beat. The first beat opens on the story's
+ * cold open, the last closes on its epilogue, and every beat in between is the
+ * narration the model wrote to carry on from the one before.
+ */
+function documentaryScript(slug: string, event: StoryEvent): string | null {
+  if (!event.narration) return null;
+  const story = getStory(slug);
+  const events = story?.events ?? [];
+  const index = events.findIndex((item) => item.id === event.id);
+  const parts: string[] = [];
+  if (index === 0 && story?.hook) parts.push(story.hook);
+  parts.push(event.narration);
+  if (index === events.length - 1 && story?.epilogue) parts.push(story.epilogue);
+  return parts.join(" ");
+}
+
 async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover | null> {
   const event = findEvent(slug, eventId);
   if (!event) return null;
   const previous = previousEvent(slug, eventId);
+  const documentary = documentaryScript(slug, event);
 
   const dir = voiceoverDir(slug);
   await fs.mkdir(dir, { recursive: true });
@@ -128,16 +146,22 @@ async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover 
     meta = null;
   }
 
-  const scriptHash = hash([
-    SCRIPT_VERSION,
-    event.title,
-    event.summary,
-    event.timestamp,
-    event.location,
-    previous ? [previous.id, monthKey(previous.timestamp), placeKey(previous)] : null,
-  ]);
+  const scriptHash = documentary
+    ? hash([SCRIPT_VERSION, "documentary", documentary])
+    : hash([
+        SCRIPT_VERSION,
+        event.title,
+        event.summary,
+        event.timestamp,
+        event.location,
+        previous ? [previous.id, monthKey(previous.timestamp), placeKey(previous)] : null,
+      ]);
   if (!meta || meta.scriptHash !== scriptHash) {
-    meta = { scriptHash, script: await writeScript(event, previous), audioHash: null };
+    meta = {
+      scriptHash,
+      script: documentary ?? (await writeScript(event, previous)),
+      audioHash: null,
+    };
   }
 
   const audioHash = hash([meta.script, TTS_MODEL, TTS_VOICE, TTS_SPEED]);

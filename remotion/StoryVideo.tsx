@@ -225,7 +225,7 @@ function TitleCard({ manifest, opacity }: { manifest: VideoManifest; opacity: nu
       />
       <div style={{ position: "absolute", left: 72, right: 72, bottom: 78 }}>
         <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.32em", color: "#7dd3fc" }}>
-          A SOURCED CHRONOLOGY
+          A SOURCED STORY
         </div>
         <h1
           style={{
@@ -240,7 +240,7 @@ function TitleCard({ manifest, opacity }: { manifest: VideoManifest; opacity: nu
           {manifest.title}
         </h1>
         <p style={{ margin: "16px 0 0", maxWidth: 860, fontSize: 24, lineHeight: 1.35, color: "#cbd5e1" }}>
-          {manifest.subtitle}
+          {manifest.hook ?? manifest.subtitle}
         </p>
         <p style={{ margin: "14px 0 0", fontSize: 16, color: "#94a3b8" }}>
           {manifest.eventCount} events
@@ -467,6 +467,11 @@ function EndCard({ manifest, opacity }: { manifest: VideoManifest; opacity: numb
           {manifest.eventCount} sourced events · {formatRange(manifest.startAt, manifest.endAt)}
           {manifest.status === "ongoing" ? " · still unfolding" : ""}
         </p>
+        {manifest.epilogue ? (
+          <p style={{ margin: "16px 0 0", maxWidth: 900, fontSize: 22, lineHeight: 1.4, fontStyle: "italic", color: "#e2e8f0" }}>
+            {manifest.epilogue}
+          </p>
+        ) : null}
         {manifest.relatedStories.length > 0 ? (
           <div style={{ marginTop: 22, display: "flex", flexWrap: "wrap", gap: 10 }}>
             {manifest.relatedStories.slice(0, 3).map((story) => (

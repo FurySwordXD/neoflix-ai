@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { motionLabel } from "@/lib/mapMotion";
 import { symbolFor } from "@/lib/mapSymbols";
 import type { Story, StoryEvent } from "@/lib/types";
 import MapSymbolIcon from "./MapSymbolIcon";
 import {
+  BEAT_LABELS,
   CATEGORY_COLORS,
   CATEGORY_LABELS,
   formatShortDate,
@@ -20,8 +20,16 @@ interface TimelineProps {
   generating?: boolean;
 }
 
+/** Act header to show above this event: only where the beat changes. */
+function chapterFor(events: StoryEvent[], index: number): string | null {
+  const beat = events[index].beat;
+  if (!beat) return null;
+  if (index > 0 && events[index - 1].beat === beat) return null;
+  return BEAT_LABELS[beat];
+}
+
 /**
- * Left rail: the story's event log, like a strategy game's turn history.
+ * Left rail: the story's event log, grouped into acts.
  */
 export default function Timeline({
   story,
@@ -71,14 +79,28 @@ export default function Timeline({
       </div>
 
       <div ref={listRef} className="scroll-slim flex-1 overflow-y-auto px-5 py-4">
+        {story.hook && (
+          <p className="fade-up mb-4 border-l-2 border-amber-400/50 pl-3 font-serif text-[13px] italic leading-relaxed text-slate-300">
+            {story.hook}
+          </p>
+        )}
         <ol className="relative space-y-1">
           <div className="absolute bottom-2 left-4 top-2 w-px bg-slate-800" />
           {story.events.map((event, i) => {
             const selected = event.id === selectedId;
             const past = selectedId !== null &&
               story.events.findIndex((e) => e.id === selectedId) > i;
+            const chapter = chapterFor(story.events, i);
             return (
               <li key={event.id} data-event-id={event.id} className={generating ? "fade-up" : undefined}>
+                {chapter && (
+                  <div className={`relative z-10 mb-1 flex items-center gap-2 pl-1 ${i > 0 ? "mt-3" : ""}`}>
+                    <span className="h-px w-3 bg-slate-700" />
+                    <span className="bg-[#050810] pr-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      {chapter}
+                    </span>
+                  </div>
+                )}
                 <button
                   onClick={() => onSelect(event)}
                   className={`group relative flex w-full items-start gap-3 rounded-lg px-2 py-2.5 text-left transition ${
@@ -123,12 +145,12 @@ export default function Timeline({
                       >
                         {CATEGORY_LABELS[event.category]}
                       </span>
-                      {event.motion && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-sky-400">
-                          {motionLabel(event.motion)}
-                        </span>
-                      )}
                     </span>
+                    {selected && (event.narration ?? event.consequence) && (
+                      <span className="fade-up mt-1.5 block border-l-2 border-sky-500/40 pl-2 font-serif text-[12px] italic leading-snug text-slate-300">
+                        {event.narration ?? event.consequence}
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>
@@ -144,6 +166,16 @@ export default function Timeline({
             </li>
           )}
         </ol>
+        {story.epilogue && !generating && (
+          <div className="mt-5 border-t border-slate-800 pt-3">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Epilogue
+            </p>
+            <p className="mt-1.5 font-serif text-[13px] italic leading-relaxed text-slate-300">
+              {story.epilogue}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

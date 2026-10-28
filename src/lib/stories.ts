@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { limitMotions } from "./mapMotion";
 import type { Story, StoryEvent, GeneratedEvent } from "./types";
 
 /**
@@ -21,7 +22,8 @@ function loadStory(slug: string): Story | null {
     .map((f) => JSON.parse(fs.readFileSync(path.join(eventsDir, f), "utf8")))
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-  return { ...meta, events };
+  // Stories saved under an older, busier prompt get the same motion budget.
+  return { ...meta, events: limitMotions(events) };
 }
 
 export type StoryMeta = Omit<Story, "events">;
@@ -95,6 +97,8 @@ export function saveNewStory(story: Story): Story {
     startAt: story.startAt,
     relatedStories: story.relatedStories,
     ...(story.endAt ? { endAt: story.endAt } : {}),
+    ...(story.hook ? { hook: story.hook } : {}),
+    ...(story.epilogue ? { epilogue: story.epilogue } : {}),
     ...(story.queries ? { queries: story.queries } : {}),
   };
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");

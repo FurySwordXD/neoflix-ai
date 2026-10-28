@@ -51,7 +51,7 @@ function loadEvents(slug) {
 
 function silentFrames(event, script) {
   const words = (script ?? event.summary ?? "").split(/\s+/).filter(Boolean).length;
-  const seconds = Math.min(9, Math.max(5.5, words / 2.6));
+  const seconds = Math.min(14, Math.max(5.5, words / 2.6));
   return Math.round(seconds * FPS);
 }
 
@@ -71,7 +71,10 @@ async function stageStory(slug) {
   for (const event of events) {
     const audioSrc = path.join(dataDir, slug, "voiceover", `${event.id}.mp3`);
     const scriptPath = path.join(dataDir, slug, "voiceover", `${event.id}.json`);
-    const script = fs.existsSync(scriptPath) ? readJson(scriptPath).script ?? null : null;
+    const script =
+      (fs.existsSync(scriptPath) ? readJson(scriptPath).script ?? null : null) ??
+      event.narration ??
+      null;
 
     let audio = null;
     let audioSeconds = null;
@@ -114,6 +117,8 @@ async function stageStory(slug) {
     title: meta.title,
     subtitle: meta.subtitle,
     description: meta.description,
+    ...(meta.hook ? { hook: meta.hook } : {}),
+    ...(meta.epilogue ? { epilogue: meta.epilogue } : {}),
     status: meta.status,
     startAt: meta.startAt,
     ...(meta.endAt ? { endAt: meta.endAt } : {}),

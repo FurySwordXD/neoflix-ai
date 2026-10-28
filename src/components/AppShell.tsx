@@ -50,6 +50,7 @@ function applyMeta(story: Story, meta: StoryStreamMeta): Story {
     ...(meta.title ? { title: meta.title } : {}),
     ...(meta.subtitle ? { subtitle: meta.subtitle } : {}),
     ...(meta.description ? { description: meta.description } : {}),
+    ...(meta.hook ? { hook: meta.hook } : {}),
     status,
   };
   if (status === "ongoing") return { ...next, endAt: undefined };

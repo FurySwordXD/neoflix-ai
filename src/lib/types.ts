@@ -102,8 +102,23 @@ export interface StoryEvent {
   magnitude?: number;
   /** Spatial action the globe animates, when the event can be illustrated that way. */
   motion?: EventMotion;
+  /** Where this event sits in the story's arc. */
+  beat?: StoryBeat;
+  /** Documented consequence that carries the reader into the next event. */
+  consequence?: string;
+  /** Documentary voice-over for this beat: picks up from the last one and moves the story on. */
+  narration?: string;
   sources: SourceRef[];
 }
+
+export type StoryBeat =
+  | "setup"
+  | "spark"
+  | "escalation"
+  | "turning-point"
+  | "climax"
+  | "fallout"
+  | "now";
 
 export interface Story {
   slug: string;
@@ -113,6 +128,10 @@ export interface Story {
   status: "ongoing" | "concluded";
   startAt: string;
   endAt?: string;
+  /** Cold open: the narrator's first lines, before the first event. */
+  hook?: string;
+  /** Closing narration: what it all meant, or what is still unresolved. */
+  epilogue?: string;
   events: StoryEvent[];
   /** Queries that already resolved to this story, so the next ask opens it. */
   queries?: string[];

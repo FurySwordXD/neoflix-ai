@@ -6,11 +6,13 @@ export interface StoryStreamMeta {
   subtitle?: string;
   description?: string;
   status?: "ongoing" | "concluded";
+  hook?: string;
 }
 
 export type StoryStreamMessage =
   | { type: "meta"; meta: StoryStreamMeta }
   | { type: "event"; event: StoryEvent }
+  | { type: "step"; step: string }
   | { type: "cached"; story: Story }
   | { type: "done"; story: Story; created: boolean }
   | { type: "error"; error: string };
@@ -22,6 +24,7 @@ export interface StoryJsonProgress {
     subtitle: string | null;
     description: string | null;
     status: "ongoing" | "concluded" | null;
+    hook: string | null;
   };
   events: unknown[];
 }
@@ -170,7 +173,7 @@ export function extractStoryProgress(raw: string): StoryJsonProgress {
   const json = visibleJson(raw);
   const empty: StoryJsonProgress = {
     error: null,
-    meta: { title: null, subtitle: null, description: null, status: null },
+    meta: { title: null, subtitle: null, description: null, status: null, hook: null },
     events: [],
   };
   if (!json) return empty;
@@ -187,6 +190,7 @@ export function extractStoryProgress(raw: string): StoryJsonProgress {
       subtitle: readField(header, "subtitle"),
       description: readField(header, "description"),
       status,
+      hook: readField(header, "hook"),
     },
     events: arrayAt >= 0 ? extractEventObjects(json, arrayAt) : [],
   };

@@ -9,6 +9,7 @@ import type {
 import { motionCaption } from "@/lib/mapMotion";
 import BiasBadge from "./BiasBadge";
 import {
+  BEAT_LABELS,
   CATEGORY_COLORS,
   CATEGORY_LABELS,
   formatDate,
@@ -66,6 +67,11 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
+              {event.beat && (
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {BEAT_LABELS[event.beat]}
+                </span>
+              )}
               <span
                 className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
                 style={{
@@ -103,10 +109,21 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
       </div>
 
       <div className="flex-1 space-y-6 px-5 py-5">
+        {/* Narration — the documentary voice; summary below stays the plain record */}
+        {event.narration && (
+          <p className="font-serif text-[15px] italic leading-relaxed text-slate-100">
+            {event.narration}
+          </p>
+        )}
         {/* Summary — deliberately unopinionated */}
         <p className="text-[13px] leading-relaxed text-slate-300">
           {event.summary}
         </p>
+        {event.consequence && (
+          <p className="-mt-3 border-l-2 border-sky-500/40 pl-3 text-[12px] italic leading-relaxed text-slate-400">
+            {event.consequence}
+          </p>
+        )}
 
         {/* Sources with bias profiles */}
         <section>

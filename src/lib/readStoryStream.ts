@@ -5,6 +5,7 @@ export interface StoryStreamHandlers {
   signal?: AbortSignal;
   onMeta?: (meta: StoryStreamMeta) => void;
   onEvent?: (event: StoryEvent) => void | Promise<void>;
+  onStep?: (step: string) => void;
   onStory?: (story: Story, created: boolean) => void | Promise<void>;
 }
 
@@ -51,6 +52,10 @@ export async function readStoryStream(
     }
     if (message.type === "event") {
       await handlers.onEvent?.(message.event);
+      return;
+    }
+    if (message.type === "step") {
+      handlers.onStep?.(message.step);
       return;
     }
     if (message.type === "error") throw new Error(message.error);

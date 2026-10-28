@@ -1,4 +1,37 @@
-import type { EventMotion, MapPlace, MotionActor } from "./types";
+import type { EventMotion, MapPlace, MotionActor, StoryBeat, StoryEvent } from "./types";
+
+export const MAX_MOTIONS = 4;
+/** Beats where movement is most often the point, kept first when trimming. */
+const MOTION_PRIORITY: StoryBeat[] = ["spark", "climax", "turning-point", "escalation", "fallout", "now", "setup"];
+
+/**
+ * Keep the map readable: at most a few animated events, and never the same
+ * animation twice in a row. Streaming applies the same rule event by event.
+ */
+export function limitMotions(events: StoryEvent[]): StoryEvent[] {
+  const keep = new Set<number>();
+  const ranked = events
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => event.motion)
+    .sort((a, b) => {
+      const pa = MOTION_PRIORITY.indexOf(a.event.beat ?? "escalation");
+      const pb = MOTION_PRIORITY.indexOf(b.event.beat ?? "escalation");
+      return pa - pb || a.index - b.index;
+    });
+  for (const { event, index } of ranked) {
+    if (keep.size >= MAX_MOTIONS) break;
+    const kind = event.motion!.kind;
+    const clash = [index - 1, index + 1].some(
+      (other) => keep.has(other) && events[other].motion?.kind === kind
+    );
+    if (!clash) keep.add(index);
+  }
+  return events.map((event, index) => {
+    if (!event.motion || keep.has(index)) return event;
+    const { motion: _dropped, ...rest } = event;
+    return rest;
+  });
+}
 
 const KINDS = new Set([
   "spread",
@@ -181,7 +214,7 @@ function compileShape(
       const prev = points[points.length - 1];
       if (prev && !apart(prev, place, 0.35)) continue;
       points.push(place);
-      if (points.length >= 6) break;
+      if (points.length >= 4) break;
     }
     if (points.length < 2) return undefined;
     if (!touches(origin, points, 5)) return undefined;
@@ -189,14 +222,14 @@ function compileShape(
   }
 
   if (kind === "converge") {
-    const from = uniquePlaces(motion.from, origin, 4);
+    const from = uniquePlaces(motion.from, origin, 3);
     if (from.length >= 2) return { kind: "converge", from };
     if (from.length === 1) return { kind: "flow", from: from[0], to: origin };
     return undefined;
   }
 
   if (kind === "radiate") {
-    const to = uniquePlaces(motion.to, origin, 4);
+    const to = uniquePlaces(motion.to, origin, 3);
     if (to.length >= 2) return { kind: "radiate", to };
     if (to.length === 1) return { kind: "flow", from: origin, to: to[0] };
     return undefined;
@@ -252,16 +285,16 @@ export function motionLegs(origin: MapPlace, motion: EventMotion): MotionLeg[] {
       return [{ from: origin, to: motion.to, lofted: true }];
     case "encircle": {
       const legs: MotionLeg[] = [];
-      for (let i = 0; i < 6; i++) {
-        const outer = unnamed(destination(origin, i * 60 + 15, motion.radius));
-        const inner = unnamed(destination(origin, i * 60 + 15, motion.radius * 0.45));
+      for (let i = 0; i < 4; i++) {
+        const outer = unnamed(destination(origin, i * 90 + 45, motion.radius));
+        const inner = unnamed(destination(origin, i * 90 + 45, motion.radius * 0.45));
         legs.push({ from: outer, to: inner, short: true, bare: true, delay: i * 0.07 });
       }
       return legs;
     }
     case "sweep": {
       const legs: MotionLeg[] = [];
-      const spread = [-28, 0, 28];
+      const spread = [-24, 0, 24];
       spread.forEach((offset, i) => {
         const reach = offset === 0 ? motion.radius : motion.radius * 0.8;
         const start = unnamed(destination(origin, motion.heading + offset * 2.2, motion.radius * 0.22));

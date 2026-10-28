@@ -1,6 +1,7 @@
 import type {
   FactualRating,
   PoliticalLean,
+  StoryBeat,
   StoryEvent,
 } from "./types";
 
@@ -21,6 +22,17 @@ export const CATEGORY_LABELS: Record<StoryEvent["category"], string> = {
   politics: "Politics",
   economy: "Economy",
   milestone: "Milestone",
+};
+
+/** Act names for the story's arc, shown as chapter headers on the timeline. */
+export const BEAT_LABELS: Record<StoryBeat, string> = {
+  setup: "The setup",
+  spark: "The spark",
+  escalation: "Escalation",
+  "turning-point": "Turning point",
+  climax: "Climax",
+  fallout: "Aftermath",
+  now: "Where it stands",
 };
 
 /** US political-spectrum convention: blue left, red right. */

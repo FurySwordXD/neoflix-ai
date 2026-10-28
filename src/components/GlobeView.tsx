@@ -170,38 +170,46 @@ export default memo(function GlobeView({
     return markers;
   }, [story, revealedIndex, selected]);
 
-  // The focused event plays its own motion. With nothing focused, every
-  // revealed event that has one plays together, so the whole story reads.
-  const illustrated = useMemo(
-    () => (selected ? [selected] : story.events.slice(0, revealedIndex + 1)),
-    [story, revealedIndex, selected]
-  );
+  // One animation at a time keeps the map readable: the focused event, or
+  // with nothing focused, the latest revealed event that has a motion.
+  const illustrated = useMemo(() => {
+    if (selected) return [selected];
+    const revealed = story.events.slice(0, revealedIndex + 1);
+    const latest = [...revealed].reverse().find((event) => event.motion);
+    return latest ? [latest] : [];
+  }, [story, revealedIndex, selected]);
 
   const arcs: GlobeArc[] = useMemo(() => {
     const out: GlobeArc[] = [];
-    for (let i = 1; i <= Math.min(revealedIndex, story.events.length - 1); i++) {
+    const last = Math.min(revealedIndex, story.events.length - 1);
+    const currentIndex = selected ? story.events.findIndex((e) => e.id === selected.id) : last;
+    for (let i = 1; i <= last; i++) {
       const from = story.events[i - 1];
       const to = story.events[i];
+      // Only the hop into the current event moves; the trail behind it is a quiet line.
+      const live = i === currentIndex;
       out.push({
         startLat: from.location.lat,
         startLng: from.location.lng,
         endLat: to.location.lat,
         endLng: to.location.lng,
-        color: [CATEGORY_COLORS[from.category], CATEGORY_COLORS[to.category]],
+        color: live
+          ? [CATEGORY_COLORS[from.category], CATEGORY_COLORS[to.category]]
+          : ["rgba(148,163,184,0.22)", "rgba(148,163,184,0.22)"],
         eventId: to.id,
-        stroke: 0.45,
-        dashLength: 0.4,
-        dashGap: 0.2,
-        dashTime: 2500,
+        stroke: live ? 0.45 : 0.25,
+        dashLength: live ? 0.4 : 1,
+        dashGap: live ? 0.2 : 0,
+        dashTime: live ? 2500 : 0,
         altitudeScale: 0.4,
       });
     }
     return out;
-  }, [story, revealedIndex]);
+  }, [story, revealedIndex, selected]);
 
   const rings: GlobeRing[] = useMemo(() => {
     const out: GlobeRing[] = [];
-    if (selected) {
+    if (selected && !selected.motion) {
       out.push({
         lat: selected.location.lat,
         lng: selected.location.lng,
@@ -250,7 +258,7 @@ export default memo(function GlobeView({
         continue;
       }
       const speed = Math.max(0.55, motion.radius / 5);
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 1; i++) {
         out.push({
           lat: event.location.lat,
           lng: event.location.lng,

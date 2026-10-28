@@ -33,6 +33,8 @@ export interface VideoManifest {
   title: string;
   subtitle: string;
   description: string;
+  hook?: string;
+  epilogue?: string;
   status: "ongoing" | "concluded";
   startAt: string;
   endAt?: string;
