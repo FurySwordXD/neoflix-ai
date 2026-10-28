@@ -27,6 +27,7 @@ type Phase =
       generating: boolean;
       error: string | null;
       generation: number;
+      steps: string[];
     };
 
 function draftStory(query: string): Story {
@@ -76,7 +77,7 @@ function applyEvent(story: Story, event: StoryEvent): Story {
 export default function AppShell({ initialStory, stories, metas }: AppShellProps) {
   const [phase, setPhase] = useState<Phase>(() =>
     initialStory
-      ? { mode: "story", story: initialStory, generating: false, error: null, generation: 0 }
+      ? { mode: "story", story: initialStory, generating: false, error: null, generation: 0, steps: [] }
       : { mode: "browse" }
   );
   const [, updateProfile] = useReaderProfile();
@@ -95,6 +96,7 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
         generating: false,
         error: null,
         generation: 0,
+        steps: [],
       });
     } else {
       setPhase({ mode: "browse" });
@@ -121,6 +123,7 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
       generating: true,
       error: null,
       generation: id,
+      steps: [],
     });
 
     let shownAt = 0;
@@ -135,6 +138,15 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
       try {
         await readStoryStream(topic, {
           signal: controller.signal,
+          onStep(step) {
+            if (generationRef.current !== id) return;
+            setPhase((current) => {
+              if (current.mode !== "story" || current.generation !== id) return current;
+              const last = current.steps[current.steps.length - 1];
+              if (last === step) return current;
+              return { ...current, steps: [...current.steps, step] };
+            });
+          },
           onMeta(meta) {
             if (generationRef.current !== id) return;
             setPhase((current) => {
@@ -164,6 +176,7 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
               generating: false,
               error: null,
               generation: id,
+              steps: [],
             });
           },
         });
@@ -192,6 +205,7 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
       generating={phase.generating}
       generation={phase.generation}
       generationError={phase.error}
+      steps={phase.steps}
       onGenerate={begin}
     />
   );

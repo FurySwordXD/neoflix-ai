@@ -91,6 +91,7 @@ Rules:
   1. Call web_search first, before writing anything, with the topic and its key facts (a general query plus one for recent developments). Never write the story from memory alone; your training data may be outdated.
   2. Study the results. If dates, figures, or the final event are still uncertain, call web_search again with specific follow-up queries (an event name, a statistic, a location) until the timeline is grounded.
   3. Only then write the JSON story. Ground every event's date, number, and source URL in the search results; prefer their exact article URLs as sources. If search returned nothing usable, say so with {"error":"no search results"} rather than writing from memory.
+- SEARCH BUDGET — you have at most 2 web_search round-trips per story. Make each query count: cover the topic broadly on the first, pin down the latest developments on the second. After the budget, write the story from what you gathered.
 - Real events only. If the topic is not a documented news or history story, return {"error":"short reason"} instead.
 - A topic that names a future or not-yet-happened event (a war that has not started, a mission not yet launched, a scheduled election or trial) is still the present day of a real story — do not refuse it. Compile the documented history that leads to it: the real events so far that make the scenario live. Set "status" to "ongoing" and end on the latest documented development as the "now" event. Every event must still be documented history on or before today; never invent, predict, or date anything after today. Example: for a planned crewed Mars launch, the story is the programme to date — contracts, uncrewed test flights, delays, the last test's outcome — ending "now" on the latest update, not the launch that has not happened.
 - 7 to 9 events, chronological. Fewer only if the record itself is short; never fewer than 5.
@@ -410,7 +411,7 @@ type WebSearchInputItem =
 type StreamInputItem = { role: "system" | "user"; content: string } | WebSearchInputItem;
 
 /** How many web_search round-trips one pass may take before we force writing. */
-const MAX_TOOL_ROUNDS = 4;
+const MAX_TOOL_ROUNDS = 2;
 
 /** Rounds that must end in a story before we give up (after the budget above). */
 const MAX_WRITE_ROUNDS = 2;
@@ -426,8 +427,7 @@ async function* runStoryPass(
   client: OpenAI,
   userContent: string,
   topic: string,
-  signal?: AbortSignal,
-  notify?: (step: string) => void
+  signal?: AbortSignal
 ): AsyncGenerator<StoryStreamMessage, string | null, void> {
   const input: StreamInputItem[] = [
     { role: "system", content: SYSTEM },
@@ -436,15 +436,24 @@ async function* runStoryPass(
 
   for (let round = 0; round < MAX_TOOL_ROUNDS + MAX_WRITE_ROUNDS; round++) {
     // Round 0 is forced to search so every story is grounded in fresh results;
-    // the budget lets the model pick follow-up searches; write-only rounds
-    // forbid further searching and demand the story JSON.
+    // the budget lets the model pick follow-up searches; when the budget runs
+    // out a hard nudge makes the model write instead of searching again.
     const writeOnly = round >= MAX_TOOL_ROUNDS;
     if (writeOnly) {
-      notify?.(
-        round === MAX_TOOL_ROUNDS
-          ? "Research budget reached — writing the story now"
-          : "Finishing the story draft"
-      );
+      yield {
+        type: "step",
+        step:
+          round === MAX_TOOL_ROUNDS
+            ? "Research budget reached — writing the story now"
+            : "Finishing the story draft",
+      };
+      input.push({
+        role: "user",
+        content:
+          "Do not call web_search again. Your research is complete. Write the complete story JSON now, starting with {\"title\":",
+      });
+    } else if (round === 0) {
+      yield { type: "step", step: "Researching the topic" };
     }
     const completion = await client.responses.create(
       {
@@ -453,11 +462,10 @@ async function* runStoryPass(
         temperature: 0.7,
         stream: true,
         tools: [WEB_SEARCH_TOOL],
-        ...(round === 0
-          ? { tool_choice: { type: "function", name: "web_search" } as const }
-          : writeOnly
-            ? { tool_choice: "none" as const }
-            : {}),
+        // Round 0 is forced to search so every story is grounded in fresh
+        // results. Never use tool_choice:"none" — Nemotron stalls on it and
+        // returns an empty message.
+        ...(round === 0 ? { tool_choice: { type: "function", name: "web_search" } as const } : {}),
       },
       { timeout: 115_000, signal }
     );
@@ -562,7 +570,6 @@ async function* runStoryPass(
 
     if (pendingCalls.length > 0) {
       // The model wants to research. Execute the searches and feed them back.
-      notify?.(`Searching the web (${pendingCalls.length} ${pendingCalls.length === 1 ? "query" : "queries"})`);
       for (const call of pendingCalls) {
         let output: string;
         try {
@@ -576,7 +583,7 @@ async function* runStoryPass(
           if (!query) {
             output = "Error: the query argument was missing or malformed.";
           } else {
-            notify?.(`Searching: “${query}”`);
+            yield { type: "step", step: `Searching: “${query}”` };
             output = formatSearchOutput(await webSearch(query));
           }
         } catch (err) {
@@ -589,26 +596,7 @@ async function* runStoryPass(
       continue; // Next round: the model continues with the search results.
     }
 
-    if (writeOnly) {
-      // The model wrote non-story text with searching forbidden. Nudge it
-      // once toward the JSON; a second failed write-only round gives up.
-      if (round === MAX_TOOL_ROUNDS) {
-        notify?.("Asking the model to start writing");
-        input.push({
-          role: "user",
-          content:
-            "Do not call web_search again. You have enough research. Write the complete story JSON now, starting with {\"title\":",
-        });
-        continue;
-      }
-      yield {
-        type: "error",
-        error: "The model could not write the story from the research gathered. Try again.",
-      };
-      return null;
-    }
-
-    notify?.("Writing the story from the research");
+    yield { type: "step", step: "Writing the story from the research" };
 
     if (refusal) return refusal;
 
@@ -659,12 +647,6 @@ async function* runStoryPass(
     yield { type: "done", story: saveNewStory(story), created: true };
     return null;
   }
-
-  // The model kept calling web_search without ever writing the story.
-  yield {
-    type: "error",
-    error: "The model spent its research budget without producing a story. Try again.",
-  };
   return null;
 }
 

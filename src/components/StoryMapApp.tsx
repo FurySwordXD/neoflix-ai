@@ -44,6 +44,7 @@ interface StoryMapAppProps {
   generating?: boolean;
   generation?: number;
   generationError?: string | null;
+  steps?: string[];
   onGenerate: (query: string) => void;
 }
 
@@ -53,6 +54,7 @@ export default function StoryMapApp({
   generating = false,
   generation = 0,
   generationError = null,
+  steps = [],
   onGenerate,
 }: StoryMapAppProps) {
   const [stories, setStories] = useState(initialStories);
@@ -275,18 +277,43 @@ export default function StoryMapApp({
               {story.events.length === 0 ? "Mapping" : `${story.events.length} placed`}
             </span>
           ) : (
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-              story.status === "ongoing"
-                ? "bg-red-500/15 text-red-300 ring-1 ring-red-500/40"
-                : "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30"
-            }`}
-          >
-            {story.status}
-          </span>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                story.status === "ongoing"
+                  ? "bg-red-500/15 text-red-300 ring-1 ring-red-500/40"
+                  : "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30"
+              }`}
+            >
+              {story.status}
+            </span>
           )}
         </div>
       </header>
+
+      {generating && steps.length > 0 && (
+        <div className="z-30 border-b border-slate-800 bg-slate-950/80 px-5 py-1.5">
+          <div className="flex items-center gap-2 overflow-x-auto text-[11px] whitespace-nowrap">
+            <span className="shrink-0 font-semibold uppercase tracking-wide text-sky-400">
+              Agent
+            </span>
+            {steps.map((step, i) => (
+              <span
+                key={i}
+                className={
+                  i === steps.length - 1
+                    ? "flex items-center gap-1.5 text-sky-200"
+                    : "text-slate-500 after:mx-1.5 after:text-slate-700 after:content-['›']"
+                }
+              >
+                {i === steps.length - 1 && (
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" />
+                )}
+                {step}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {generationError && (
         <p className="z-30 border-b border-red-900/60 bg-red-950/90 px-5 py-2 text-xs text-red-200">

@@ -5,11 +5,8 @@ import OpenAI from "openai";
  * pointed at the Nebius base URL. All runtime story generation flows
  * through this single client.
  */
-export const NEBIUS_BASE_URL =
-  process.env.NEBIUS_BASE_URL ?? "https://api.studio.nebius.ai/v1/";
-
-export const NEBIUS_MODEL =
-  process.env.NEBIUS_MODEL ?? "nvidia/nemotron-3-super-120b-a12b";
+export const NEBIUS_BASE_URL = "https://api.studio.nebius.ai/v1/";
+export const NEBIUS_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 export function getNebiusClient(): OpenAI {
   const apiKey = process.env.NEBIUS_API_KEY;
