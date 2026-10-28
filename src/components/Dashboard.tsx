@@ -16,6 +16,8 @@ import StoryQueryForm from "./StoryQueryForm";
 
 interface DashboardProps {
   metas: StoryMeta[];
+  /** Graph trends from the server; the static TRENDS list is used when empty. */
+  trends?: TrendItem[];
   onGenerate: (query: string, topics?: string[]) => void;
 }
 
@@ -33,7 +35,7 @@ function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
 }
 
-export default function Dashboard({ metas, onGenerate }: DashboardProps) {
+export default function Dashboard({ metas, trends, onGenerate }: DashboardProps) {
   const router = useRouter();
   const [profile, update] = useReaderProfile();
   const [ready, setReady] = useState(false);
@@ -45,7 +47,10 @@ export default function Dashboard({ metas, onGenerate }: DashboardProps) {
   }, []);
 
   const showPicker = ready && (!profile.onboarded || editing);
-  const ranked = useMemo(() => recommend(TRENDS, profile, 9), [profile]);
+  const ranked = useMemo(
+    () => recommend(trends && trends.length > 0 ? trends : TRENDS, profile, 9),
+    [trends, profile]
+  );
 
   useEffect(() => {
     if (showPicker && !draft) {
