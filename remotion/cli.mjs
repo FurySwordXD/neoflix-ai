@@ -7,6 +7,8 @@ import { ALL_FORMATS, BufferSource, Input } from "mediabunny";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.join(root, "src/data/stories");
 const publicDir = path.join(root, "public/remotion");
+const apiUrl = (process.env.ALGONEWS_API_URL || "http://localhost:3000").replace(/\/+$/, "");
+const API_TIMEOUT_MS = 10_000;
 
 const FPS = 30;
 const TITLE_FRAMES = 4 * FPS;
@@ -18,13 +20,79 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function listSlugs() {
+/**
+ * Stories come from the app's API, so they load the same whether the app
+ * stores them as files or in Neo4j. When the API is not running, the CLI
+ * falls back to the JSON files under src/data/stories.
+ */
+function listFileSlugs() {
   if (!fs.existsSync(dataDir)) return [];
   return fs
     .readdirSync(dataDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(dataDir, entry.name, "meta.json")))
     .map((entry) => entry.name)
     .sort();
+}
+
+function loadFileStory(slug) {
+  return { ...readJson(path.join(dataDir, slug, "meta.json")), events: loadEvents(slug) };
+}
+
+async function fetchJson(pathname) {
+  const res = await fetch(`${apiUrl}${pathname}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`GET ${pathname} returned ${res.status}`);
+  return res.json();
+}
+
+/** True when the request never reached a server (as opposed to the server answering with an error). */
+function isUnreachable(err) {
+  return err instanceof TypeError || err?.name === "TimeoutError" || err?.name === "AbortError";
+}
+
+async function loadApiStories() {
+  const { stories } = await fetchJson("/api/stories");
+  if (!Array.isArray(stories)) throw new Error("GET /api/stories returned no story list");
+  const loaded = [];
+  for (const { slug } of stories) {
+    const { story } = await fetchJson(`/api/stories/${encodeURIComponent(slug)}`);
+    loaded.push(story);
+  }
+  return loaded.sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+async function loadStories() {
+  try {
+    return await loadApiStories();
+  } catch (err) {
+    if (!isUnreachable(err)) throw err;
+    console.error(`Story API at ${apiUrl} is unreachable; reading src/data/stories instead.`);
+    return listFileSlugs().map(loadFileStory);
+  }
+}
+
+async function readStdin() {
+  if (process.stdin.isTTY) return "";
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8").trim();
+}
+
+/** stage-one's story: JSON on stdin when given (the preview route sends it), else the API or files. */
+async function loadOneStory(slug) {
+  const raw = await readStdin();
+  if (raw) {
+    const story = JSON.parse(raw);
+    if (story?.slug !== slug || !Array.isArray(story.events)) {
+      throw new Error(`Story JSON on stdin is not story "${slug}"`);
+    }
+    return story;
+  }
+  const stories = await loadStories();
+  const story = stories.find((item) => item.slug === slug);
+  if (!story) {
+    throw new Error(`Unknown story "${slug}". Available: ${stories.map((item) => item.slug).join(", ")}`);
+  }
+  return story;
 }
 
 async function mp3Seconds(filePath) {
@@ -55,9 +123,9 @@ function silentFrames(event, script) {
   return Math.round(seconds * FPS);
 }
 
-async function stageStory(slug) {
-  const meta = readJson(path.join(dataDir, slug, "meta.json"));
-  const events = loadEvents(slug);
+async function stageStory(story) {
+  const { slug, events: unsorted, ...meta } = story;
+  const events = [...(unsorted ?? [])].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
   if (events.length === 0) throw new Error(`${slug} has no events`);
 
   const dest = path.join(publicDir, slug);
@@ -158,25 +226,33 @@ function run(command, args) {
 }
 
 const [mode, ...args] = process.argv.slice(2);
-const slugs = listSlugs();
-if (slugs.length === 0) {
-  console.error("No stories found in src/data/stories");
-  process.exit(1);
-}
 
 if (mode === "stage-one") {
   const slug = args[0];
-  if (!slug || !slugs.includes(slug)) {
-    console.error(`Unknown story "${slug ?? ""}". Available: ${slugs.join(", ")}`);
+  if (!slug) {
+    console.error("Usage: node remotion/cli.mjs stage-one <slug>");
     process.exit(1);
   }
-  await stageStory(slug);
+  try {
+    await stageStory(await loadOneStory(slug));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
   process.exit(0);
 }
 
+const stories = await loadStories();
+const slugs = stories.map((story) => story.slug);
+if (slugs.length === 0) {
+  console.error(`No stories found (API ${apiUrl} or src/data/stories)`);
+  process.exit(1);
+}
+
 console.log(`Staging ${slugs.length} ${slugs.length === 1 ? "story" : "stories"}…`);
-for (const slug of slugs) {
-  const manifest = await stageStory(slug);
+for (const story of stories) {
+  const slug = story.slug;
+  const manifest = await stageStory(story);
   const seconds = (manifest.durationInFrames / FPS).toFixed(1);
   console.log(`  ${slug}: ${manifest.eventCount} events, ${manifest.narratedCount} narrated, ${seconds}s`);
 }

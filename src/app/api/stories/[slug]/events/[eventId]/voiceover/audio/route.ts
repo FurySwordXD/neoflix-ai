@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; eventId: string }> }
 ) {
   const { slug, eventId } = await params;
-  if (!findEvent(slug, eventId)) {
+  if (!(await findEvent(slug, eventId))) {
     return NextResponse.json({ error: "Event not found" }, { status: 404 });
   }
 

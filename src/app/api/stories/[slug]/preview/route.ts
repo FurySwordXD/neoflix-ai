@@ -2,15 +2,20 @@ import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
+import { getStory } from "@/lib/stories";
+import type { Story } from "@/lib/types";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
-function stageStory(slug: string) {
+/** Runs the CLI's stage-one on this story, handing it the story JSON on stdin. */
+function stageStory(story: Story) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(process.execPath, ["remotion/cli.mjs", "stage-one", slug], {
+    const child = spawn(process.execPath, ["remotion/cli.mjs", "stage-one", story.slug], {
       cwd: process.cwd(),
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["pipe", "ignore", "pipe"],
     });
+    child.stdin.on("error", reject);
+    child.stdin.end(JSON.stringify(story));
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
@@ -34,7 +39,11 @@ export async function POST(
   }
 
   try {
-    await stageStory(slug);
+    const story = await getStory(slug);
+    if (!story) {
+      return NextResponse.json({ error: "Story not found" }, { status: 404 });
+    }
+    await stageStory(story);
     const raw = await fs.readFile(
       path.join(process.cwd(), "public/remotion", slug, "manifest.json"),
       "utf8"

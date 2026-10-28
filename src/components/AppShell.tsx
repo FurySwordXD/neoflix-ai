@@ -5,7 +5,7 @@ import Dashboard from "@/components/Dashboard";
 import StoryMapApp from "@/components/StoryMapApp";
 import { readStoryRefresh, readStoryStream } from "@/lib/readStoryStream";
 import { useReaderProfile, withOpen } from "@/lib/profile";
-import { topicsForSlug } from "@/lib/recommend";
+import { topicsForSlug, type TrendItem } from "@/lib/recommend";
 import type { StoryMeta } from "@/lib/stories";
 import type { Story, StoryEvent } from "@/lib/types";
 import type { StoryStreamMeta } from "@/lib/storyStream";
@@ -17,6 +17,8 @@ interface AppShellProps {
   initialStory: Story | null;
   stories: Array<Pick<Story, "slug" | "title" | "status">>;
   metas: StoryMeta[];
+  /** Live graph trends; empty means the dashboard uses the static list. */
+  trends?: TrendItem[];
 }
 
 type Phase =
@@ -83,7 +85,7 @@ function applyEvent(story: Story, event: StoryEvent): Story {
   };
 }
 
-export default function AppShell({ initialStory, stories, metas }: AppShellProps) {
+export default function AppShell({ initialStory, stories, metas, trends }: AppShellProps) {
   const [phase, setPhase] = useState<Phase>(() =>
     initialStory
       ? { mode: "story", story: initialStory, generating: false, error: null, generation: 0, steps: [] }
@@ -275,7 +277,7 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
   }
 
   if (phase.mode === "browse") {
-    return <Dashboard metas={metas} onGenerate={begin} />;
+    return <Dashboard metas={metas} trends={trends} onGenerate={begin} />;
   }
 
   return (

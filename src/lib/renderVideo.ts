@@ -28,6 +28,10 @@ const globalJobs = globalThis as unknown as {
 const jobs = globalJobs.__worldnewsVideoJobs ?? new Map<string, InternalJob>();
 globalJobs.__worldnewsVideoJobs = jobs;
 
+function apiBaseUrl(): string {
+  return process.env.ALGONEWS_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+}
+
 export function videoOutputPath(slug: string): string {
   return path.join(process.cwd(), "out", `${slug}.mp4`);
 }
@@ -79,11 +83,11 @@ function noteProgress(job: InternalJob, line: string) {
   }
 }
 
-export function startVideoRender(slug: string): {
+export async function startVideoRender(slug: string): Promise<{
   job: VideoJob;
   httpStatus: number;
-} {
-  if (!SLUG_RE.test(slug) || !getStory(slug)) {
+}> {
+  if (!SLUG_RE.test(slug) || !(await getStory(slug))) {
     return {
       job: {
         slug,
@@ -128,7 +132,8 @@ export function startVideoRender(slug: string): {
 
   const child = spawn(process.execPath, ["remotion/cli.mjs", "render", slug], {
     cwd: process.cwd(),
-    env: process.env,
+    // The CLI loads stories through this server's API, wherever they are stored.
+    env: { ...process.env, ALGONEWS_API_URL: apiBaseUrl() },
     stdio: ["ignore", "pipe", "pipe"],
   });
   job.child = child;

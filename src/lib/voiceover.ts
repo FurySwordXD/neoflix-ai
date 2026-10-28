@@ -4,7 +4,7 @@ import path from "path";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { DATA_DIR, getStory } from "./stories";
 import { getNebiusClient, NEBIUS_MODEL } from "./nebius";
-import type { StoryEvent } from "./types";
+import type { Story, StoryEvent } from "./types";
 
 /**
  * Per-event voice-over: Nebius writes a short neutral narration line, ElevenLabs
@@ -59,10 +59,15 @@ function hash(value: unknown): string {
   return crypto.createHash("sha1").update(JSON.stringify(value)).digest("hex").slice(0, 12);
 }
 
-/** Resolves the event only if both ids are real, so they're safe in file paths. */
-export function findEvent(slug: string, eventId: string): StoryEvent | null {
+/** The story, only for a slug that is safe in file paths. */
+async function findStory(slug: string): Promise<Story | null> {
   if (!SLUG_RE.test(slug)) return null;
-  return getStory(slug)?.events.find((e) => e.id === eventId) ?? null;
+  return getStory(slug);
+}
+
+/** Resolves the event only if both ids are real, so they're safe in file paths. */
+export async function findEvent(slug: string, eventId: string): Promise<StoryEvent | null> {
+  return (await findStory(slug))?.events.find((e) => e.id === eventId) ?? null;
 }
 
 export function voiceoverAudioPath(slug: string, eventId: string): string {
@@ -93,8 +98,7 @@ function placeKey(event: StoryEvent): string {
   return `${event.location.name}|${event.location.country}`;
 }
 
-function previousEvent(slug: string, eventId: string): StoryEvent | null {
-  const events = getStory(slug)?.events ?? [];
+function previousEvent(events: StoryEvent[], eventId: string): StoryEvent | null {
   const index = events.findIndex((event) => event.id === eventId);
   return index > 0 ? events[index - 1] : null;
 }
@@ -116,23 +120,24 @@ function spokenLead(event: StoryEvent, previous: StoryEvent | null): string {
  * cold open, the last closes on its epilogue, and every beat in between is the
  * narration the model wrote to carry on from the one before.
  */
-function documentaryScript(slug: string, event: StoryEvent): string | null {
+function documentaryScript(story: Story, event: StoryEvent): string | null {
   if (!event.narration) return null;
-  const story = getStory(slug);
-  const events = story?.events ?? [];
+  const events = story.events;
   const index = events.findIndex((item) => item.id === event.id);
   const parts: string[] = [];
-  if (index === 0 && story?.hook) parts.push(story.hook);
+  if (index === 0 && story.hook) parts.push(story.hook);
   parts.push(event.narration);
-  if (index === events.length - 1 && story?.epilogue) parts.push(story.epilogue);
+  if (index === events.length - 1 && story.epilogue) parts.push(story.epilogue);
   return parts.join(" ");
 }
 
 async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover | null> {
-  const event = findEvent(slug, eventId);
-  if (!event) return null;
-  const previous = previousEvent(slug, eventId);
-  const documentary = documentaryScript(slug, event);
+  // The story may live in the graph; only its media cache is on disk.
+  const story = await findStory(slug);
+  const event = story?.events.find((e) => e.id === eventId);
+  if (!story || !event) return null;
+  const previous = previousEvent(story.events, eventId);
+  const documentary = documentaryScript(story, event);
 
   const dir = voiceoverDir(slug);
   await fs.mkdir(dir, { recursive: true });
