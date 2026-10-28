@@ -36,6 +36,24 @@ export function buildSourceCards(event: StoryEvent): HTMLElement {
   const stack = el("div", "map-cards");
   anchor.appendChild(stack);
 
+  const lead = event.images?.[0];
+  if (lead) {
+    const figure = el("div", "map-cards-photo");
+    figure.style.setProperty("--cat", CATEGORY_COLORS[event.category]);
+    const img = document.createElement("img");
+    img.src = lead.url;
+    img.alt = lead.caption ?? event.title;
+    img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
+    // A dead research image must not leave a hole above the cards.
+    img.addEventListener("error", () => figure.remove());
+    figure.appendChild(img);
+    if (lead.caption) {
+      figure.appendChild(el("div", "map-cards-photo-caption", lead.caption));
+    }
+    stack.appendChild(figure);
+  }
+
   const header = el(
     "div",
     "map-cards-header",

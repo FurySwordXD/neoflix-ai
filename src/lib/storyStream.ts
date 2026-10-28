@@ -14,7 +14,8 @@ export type StoryStreamMessage =
   | { type: "event"; event: StoryEvent }
   | { type: "step"; step: string }
   | { type: "cached"; story: Story }
-  | { type: "done"; story: Story; created: boolean }
+  /** `added` counts events an update pass appended; omitted for a fresh compile. */
+  | { type: "done"; story: Story; created: boolean; added?: number }
   | { type: "error"; error: string };
 
 export interface StoryJsonProgress {

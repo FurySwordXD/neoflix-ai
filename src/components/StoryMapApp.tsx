@@ -46,6 +46,13 @@ interface StoryMapAppProps {
   generationError?: string | null;
   steps?: string[];
   onGenerate: (query: string) => void;
+  /** An update pass pulling the latest news into this story is running. */
+  refreshing?: boolean;
+  refreshSteps?: string[];
+  refreshError?: string | null;
+  /** Shown when an update pass finished and found nothing new. */
+  refreshNotice?: string | null;
+  onRefresh?: () => void;
 }
 
 export default function StoryMapApp({
@@ -56,6 +63,11 @@ export default function StoryMapApp({
   generationError = null,
   steps = [],
   onGenerate,
+  refreshing = false,
+  refreshSteps = [],
+  refreshError = null,
+  refreshNotice = null,
+  onRefresh,
 }: StoryMapAppProps) {
   const [stories, setStories] = useState(initialStories);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -116,7 +128,7 @@ export default function StoryMapApp({
     }
     if (events.length === 0) return;
     // Starting from nothing (or the end) restarts the story immediately.
-    if (selectedIndex === -1 || selectedIndex >= events.length - 1) {
+    if (selectedIndex === -1 || selectedIndex >= events.length) {
       setSelectedId(events[0].id);
     }
     setAutoplay(true);
@@ -169,13 +181,14 @@ export default function StoryMapApp({
   // With narration on, each step lasts as long as its voice-over.
   useEffect(() => {
     if (!autoplay || selectedIndex === -1) return;
-    if (selectedIndex >= events.length - 1) {
-      setAutoplay(false);
-      return;
-    }
     if (narrationOn && !narrationFinished) return;
+    const atLast = selectedIndex >= events.length - 1;
     const delay = narrationOn ? NARRATION_GAP_MS / speed : stepMs;
-    const timer = setTimeout(() => selectIndex(selectedIndex + 1), delay);
+    // The last event still gets its step (and voice-over); autoplay stops after it.
+    const timer = setTimeout(() => {
+      if (atLast) setAutoplay(false);
+      selectIndex(selectedIndex + 1);
+    }, delay);
     return () => clearTimeout(timer);
   }, [
     autoplay,
@@ -249,8 +262,8 @@ export default function StoryMapApp({
               onClick={() => setView("interactive")}
               title="Explore the map and timeline"
               className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${view === "interactive"
-                  ? "bg-slate-100 text-slate-900"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                ? "bg-slate-100 text-slate-900"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 }`}
             >
               Interactive
@@ -261,13 +274,24 @@ export default function StoryMapApp({
               disabled={unsaved}
               title={generating ? "Available when the story is mapped" : "Preview the video"}
               className={`px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${view === "immersive"
-                  ? "bg-sky-500 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                ? "bg-sky-500 text-white"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 }`}
             >
               Immersive
             </button>
           </div>
+          {!unsaved && onRefresh && story.status === "ongoing" && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              title="Search the web for the latest news on this story"
+              className="shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white disabled:cursor-wait disabled:opacity-50"
+            >
+              {refreshing ? "⟳ Checking…" : "⟳ Latest news"}
+            </button>
+          )}
           {!unsaved && <RenderVideoButton slug={story.slug} />}
           {generating ? (
             <span className="shrink-0 rounded-full bg-sky-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-sky-300 ring-1 ring-sky-500/40">
@@ -277,8 +301,8 @@ export default function StoryMapApp({
           ) : (
             <span
               className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${story.status === "ongoing"
-                  ? "bg-red-500/15 text-red-300 ring-1 ring-red-500/40"
-                  : "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30"
+                ? "bg-red-500/15 text-red-300 ring-1 ring-red-500/40"
+                : "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30"
                 }`}
             >
               {story.status}
@@ -315,6 +339,44 @@ export default function StoryMapApp({
       {generationError && (
         <p className="z-30 border-b border-red-900/60 bg-red-950/90 px-5 py-2 text-xs text-red-200">
           {generationError}
+        </p>
+      )}
+
+      {/* Update pass over an open story: progress steps, then the outcome */}
+      {refreshing && refreshSteps.length > 0 && (
+        <div className="z-30 border-b border-slate-800 bg-slate-950/80 px-5 py-1.5">
+          <div className="flex items-center gap-2 overflow-x-auto text-[11px] whitespace-nowrap">
+            <span className="shrink-0 font-semibold uppercase tracking-wide text-emerald-400">
+              Update
+            </span>
+            {refreshSteps.map((step, i) => (
+              <span
+                key={`${i}-${step}`}
+                className={
+                  i === refreshSteps.length - 1
+                    ? "flex items-center gap-1.5 text-emerald-200"
+                    : "text-slate-500 after:mx-1.5 after:text-slate-700 after:content-['›']"
+                }
+              >
+                {i === refreshSteps.length - 1 && (
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                )}
+                {step}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {refreshError && !refreshing && (
+        <p className="z-30 border-b border-amber-900/60 bg-amber-950/90 px-5 py-2 text-xs text-amber-200">
+          {refreshError}
+        </p>
+      )}
+
+      {refreshNotice && !refreshing && !refreshError && (
+        <p className="z-30 border-b border-slate-800 bg-slate-950/80 px-5 py-2 text-xs text-slate-400">
+          {refreshNotice}
         </p>
       )}
 

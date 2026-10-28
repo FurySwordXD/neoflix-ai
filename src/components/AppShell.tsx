@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Dashboard from "@/components/Dashboard";
 import StoryMapApp from "@/components/StoryMapApp";
-import { readStoryStream } from "@/lib/readStoryStream";
+import { readStoryRefresh, readStoryStream } from "@/lib/readStoryStream";
 import { useReaderProfile, withOpen } from "@/lib/profile";
 import { topicsForSlug } from "@/lib/recommend";
 import type { StoryMeta } from "@/lib/stories";
@@ -29,6 +29,15 @@ type Phase =
       generation: number;
       steps: string[];
     };
+
+/** An in-flight update pass over an open story: streamed like a generation. */
+interface RefreshState {
+  steps: string[];
+  error: string | null;
+}
+
+/** Transient line under the header when an update found nothing new. */
+const UP_TO_DATE_NOTICE = "No new developments — this story is already up to date.";
 
 function draftStory(query: string): Story {
   return {
@@ -86,9 +95,18 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
   const generationRef = useRef(0);
   const topicsRef = useRef<string[] | null>(null);
   const initialSlug = initialStory?.slug ?? "";
+  const [refreshing, setRefreshing] = useState(false);
+  const [refresh, setRefresh] = useState<RefreshState | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+  const refreshAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (live.current) return;
+    // A new story view starts clean: drop any refresh still in flight.
+    refreshAbortRef.current?.abort();
+    setRefreshing(false);
+    setRefresh(null);
+    setRefreshNotice(null);
     if (initialStory) {
       setPhase({
         mode: "story",
@@ -104,13 +122,19 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
   }, [initialSlug, initialStory]);
 
   useEffect(() => {
-    return () => abortRef.current?.abort();
+    return () => {
+      abortRef.current?.abort();
+      refreshAbortRef.current?.abort();
+    };
   }, []);
 
   function begin(query: string, topics?: string[]) {
     const topic = query.trim();
     if (topic.length < 2) return;
     abortRef.current?.abort();
+    refreshAbortRef.current?.abort();
+    setRefreshing(false);
+    setRefresh(null);
     const controller = new AbortController();
     abortRef.current = controller;
     const id = ++generationRef.current;
@@ -194,6 +218,62 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
     })();
   }
 
+  // Pull the latest news into the open story. New events stream in like a
+  // generation; the story itself stays open and readable the whole time.
+  function refreshStory() {
+    if (phase.mode !== "story" || phase.generating) return;
+    const slug = phase.story.slug;
+    if (slug === "generating") return;
+    refreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
+    setRefreshing(true);
+    setRefresh({ steps: [], error: null });
+    setRefreshNotice(null);
+
+    void (async () => {
+      try {
+        await readStoryRefresh(slug, {
+          signal: controller.signal,
+          onStep(step) {
+            if (controller.signal.aborted) return;
+            setRefresh((current) =>
+              current && !current.steps.includes(step)
+                ? { ...current, steps: [...current.steps, step] }
+                : current
+            );
+          },
+          onEvent(event) {
+            if (controller.signal.aborted) return;
+            // Only apply updates while this story is still the one on screen.
+            setPhase((current) =>
+              current.mode === "story" && current.story.slug === slug
+                ? { ...current, story: applyEvent(current.story, event) }
+                : current
+            );
+          },
+          onStory(next, _created, added) {
+            if (controller.signal.aborted) return;
+            setPhase((current) =>
+              current.mode === "story" && current.story.slug === next.slug
+                ? { ...current, story: next }
+                : current
+            );
+            if (added === 0) setRefreshNotice(UP_TO_DATE_NOTICE);
+          },
+        });
+        setRefreshing(false);
+        setRefresh(null);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        const message = err instanceof Error ? err.message : "Could not refresh that story";
+        setRefreshing(false);
+        setRefresh({ steps: [], error: message });
+      }
+    })();
+  }
+
   if (phase.mode === "browse") {
     return <Dashboard metas={metas} onGenerate={begin} />;
   }
@@ -207,6 +287,11 @@ export default function AppShell({ initialStory, stories, metas }: AppShellProps
       generationError={phase.error}
       steps={phase.steps}
       onGenerate={begin}
+      refreshing={refreshing}
+      refreshSteps={refresh?.steps ?? []}
+      refreshError={refresh?.error ?? null}
+      refreshNotice={refreshNotice}
+      onRefresh={refreshStory}
     />
   );
 }

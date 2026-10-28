@@ -1,5 +1,7 @@
 import { Audio } from "@remotion/media";
-import { AbsoluteFill, Easing, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { useState } from "react";
+import { AbsoluteFill, Easing, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import type { VideoImage } from "./types";
 import { motionCaption } from "../src/lib/mapMotion";
 import { CATEGORY_COLORS, CATEGORY_LABELS, LEAN_COLORS, formatMagnitude } from "../src/lib/ui";
 import { EarthScene } from "./EarthScene";
@@ -270,6 +272,8 @@ function EventPanel({
   opacity: number;
 }) {
   const color = CATEGORY_COLORS[event.category];
+  // Manifests staged before images existed are still on disk, so stay defensive.
+  const photo = event.images?.[0];
   return (
     <div
       style={{
@@ -317,6 +321,7 @@ function EventPanel({
       >
         {event.title}
       </h2>
+      {photo ? <EventPhoto image={photo} /> : null}
       <p style={{ margin: "12px 0 0", fontSize: 16, color: "#94a3b8" }}>
         {formatLongDate(event.timestamp)} · {event.location.name}, {event.location.country}
         {event.magnitude ? ` · scale ${formatMagnitude(event.magnitude)}` : ""}
@@ -331,7 +336,7 @@ function EventPanel({
           lineHeight: 1.5,
           color: "#cbd5e1",
           display: "-webkit-box",
-          WebkitLineClamp: 8,
+          WebkitLineClamp: photo ? 4 : 8,
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
         }}
@@ -371,6 +376,38 @@ function EventPanel({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The event's photograph. These URLs come from live research, so the render
+ * must survive a dead link: `onImageError` swallows the failure (without it
+ * Remotion cancels the whole render) and the frame simply drops the photo.
+ */
+function EventPhoto({ image }: { image: VideoImage }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+  return (
+    <div style={{ marginTop: 18 }}>
+      <Img
+        src={image.url}
+        onImageError={() => setBroken(true)}
+        delayRenderTimeoutInMilliseconds={15_000}
+        style={{
+          width: "100%",
+          height: 250,
+          objectFit: "cover",
+          borderRadius: 10,
+          border: "1px solid #1e293b",
+          backgroundColor: "#0b1120",
+        }}
+      />
+      {image.caption ? (
+        <p style={{ margin: "7px 0 0", fontSize: 13, lineHeight: 1.35, color: "#94a3b8" }}>
+          {image.caption}
+        </p>
+      ) : null}
     </div>
   );
 }

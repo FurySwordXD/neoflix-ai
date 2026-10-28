@@ -1,4 +1,4 @@
-import type { EventMotion, PoliticalLean, StoryEvent } from "../src/lib/types";
+import type { EventImage, EventMotion, PoliticalLean, StoryEvent } from "../src/lib/types";
 
 export const FPS = 30;
 
@@ -7,6 +7,9 @@ export interface VideoSource {
   publisher: string;
   politicalLean: PoliticalLean;
 }
+
+/** A photograph for the event panel: the URL plus an optional caption. */
+export type VideoImage = Pick<EventImage, "url" | "caption">;
 
 /** One story event, timed onto the video timeline. */
 export interface VideoEvent {
@@ -18,6 +21,7 @@ export interface VideoEvent {
   magnitude?: number;
   location: StoryEvent["location"];
   motion?: EventMotion;
+  images: VideoImage[];
   sources: VideoSource[];
   /** Spoken line, when a voice-over script has been generated. */
   script: string | null;

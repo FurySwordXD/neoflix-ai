@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { symbolFor } from "@/lib/mapSymbols";
 import type { Story, StoryEvent } from "@/lib/types";
 import MapSymbolIcon from "./MapSymbolIcon";
+import EventImageFigure from "./EventImageFigure";
 import {
   BEAT_LABELS,
   CATEGORY_COLORS,
@@ -146,6 +147,11 @@ export default function Timeline({
                         {CATEGORY_LABELS[event.category]}
                       </span>
                     </span>
+                    {selected && event.images && event.images.length > 0 && (
+                      <span className="fade-up mt-2 block">
+                        <EventImageFigure image={event.images[0]} size="thumb" />
+                      </span>
+                    )}
                     {selected && (event.narration ?? event.consequence) && (
                       <span className="fade-up mt-1.5 block border-l-2 border-sky-500/40 pl-2 font-serif text-[12px] italic leading-snug text-slate-300">
                         {event.narration ?? event.consequence}

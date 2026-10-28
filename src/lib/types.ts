@@ -51,6 +51,19 @@ export interface GeoLocation {
   lng: number;
 }
 
+/**
+ * A photograph attached to an event, harvested from the coverage the event
+ * cites. `url` always points at an image found during research; `sourceUrl`
+ * is the page it appeared on, so the reader can see it in context.
+ */
+export interface EventImage {
+  url: string;
+  /** Short factual line on what the image shows. */
+  caption?: string;
+  /** The article the image was published on. */
+  sourceUrl?: string;
+}
+
 /** A named point on a map animation. Country is omitted; the event place already has one. */
 export interface MapPlace {
   name: string;
@@ -108,6 +121,8 @@ export interface StoryEvent {
   consequence?: string;
   /** Documentary voice-over for this beat: picks up from the last one and moves the story on. */
   narration?: string;
+  /** Photographs from the coverage, shown alongside the event. */
+  images?: EventImage[];
   sources: SourceRef[];
 }
 

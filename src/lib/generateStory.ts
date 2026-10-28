@@ -1,10 +1,11 @@
 import type OpenAI from "openai";
+import { compileEventImages, dedupeEventImages } from "./eventImages";
 import { compileMotion, limitMotions, MAX_MOTIONS } from "./mapMotion";
 import { getNebiusClient, NEBIUS_MODEL, parseJsonResponse } from "./nebius";
-import { getStory, listStoryMetas, rememberQuery, saveNewStory } from "./stories";
+import { appendStoryEvents, getStory, listStoryMetas, rememberQuery, saveNewStory } from "./stories";
 import { findExistingStory, slugify } from "./storyMatch";
 import { extractStoryProgress, type StoryStreamMessage, type StoryStreamMeta } from "./storyStream";
-import { formatSearchOutput, webSearch } from "./webSearch";
+import { collectImageUrls, formatSearchOutput, webSearch } from "./webSearch";
 import type {
   FactualRating,
   PoliticalLean,
@@ -73,6 +74,7 @@ Return STRICT JSON only, no markdown, with this shape:
     "magnitude": number (optional scale figure: cases, deaths, people, dollars),
     "location": { "name": string, "country": string, "lat": number, "lng": number },
     "motion": a map animation (see MOTION below), or omit,
+    "images": [{ "url": string, "caption": string, "sourceUrl": string }] (0–2, see IMAGES below),
     "sources": [{
       "publisher": string,
       "title": string,
@@ -148,6 +150,13 @@ MOTION rules — restraint makes the animations land:
 
 - URLs must be real pages you know (the article, a WHO/UN/government report, or that event's Wikipedia page). If you are not sure of a specific article path, use the Wikipedia page for the event. Never invent a URL path; never write placeholder paths like "DONXXX" or "/2026-latest" — fall back to Wikipedia instead. When a web_search result contains the exact article URL, prefer that URL.
 - Classify each outlet's bias from your knowledge of that publisher.
+
+IMAGES — every event should carry the photograph that shows it, so the story reads as a documentary and not a list of captions.
+- Only URLs that appeared in a web_search result may be used, verbatim: either an "image:" line under a result (that article's own lead photo) or a URL from the CANDIDATE IMAGES pool. Never invent, guess, shorten, or alter an image URL, and never build one by pattern — a wrong image is worse than none.
+- Attach 1 image to an event when a candidate genuinely shows that event (the reactor, the flood, the crowd, the signing, the city); attach 2 only when both are clearly about it. Omit "images" entirely when nothing on the list depicts the event — never reach for an unrelated photo just to fill the slot.
+- Prefer the image from the article you already cite as a source for that event: set "sourceUrl" to that article's URL so the reader can see it in context.
+- "caption": one short line, at most 12 words, on what the image shows — and it must be sourced, not guessed. Use the "(alt: …)" text the result published for that image, tightened to fit; when the alt text says nothing useful, caption it from the event's own documented facts, never from the image URL or filename. Never describe detail you cannot see in the source text (no "map showing…", no "crowd of thousands") unless a source says so.
+- Spread the images across the arc: do not give every event the same photo, and never reuse one image twice in a story.
 - relatedStories: 0 to 3 adjacent real stories, title and one-line relation only.`;
 
 interface RawSource {
@@ -170,6 +179,7 @@ interface RawEvent {
   magnitude?: unknown;
   location?: { name?: unknown; country?: unknown; lat?: unknown; lng?: unknown };
   motion?: unknown;
+  images?: unknown;
   sources?: RawSource[];
 }
 
@@ -226,7 +236,11 @@ function parseModelJson(raw: string): RawStory {
   }
 }
 
-function compileEvent(raw: RawEvent, index: number): StoryEvent | null {
+function compileEvent(
+  raw: RawEvent,
+  index: number,
+  allowedImages?: Set<string>
+): StoryEvent | null {
   const title = text(raw.title, 140);
   const summary = text(raw.summary, 400);
   const timestamp = asIso(raw.timestamp);
@@ -292,11 +306,13 @@ function compileEvent(raw: RawEvent, index: number): StoryEvent | null {
   if (narration) event.narration = narration;
   const motion = compileMotion(raw.motion, { name, lat, lng });
   if (motion) event.motion = motion;
+  const images = compileEventImages(raw.images, allowedImages);
+  if (images.length > 0) event.images = images;
   return event;
 }
 
 
-function compileStory(query: string, raw: RawStory): Story {
+function compileStory(query: string, raw: RawStory, allowedImages?: Set<string>): Story {
   if (typeof raw.error === "string" && raw.error.trim()) {
     throw new Error(raw.error.trim());
   }
@@ -309,10 +325,10 @@ function compileStory(query: string, raw: RawStory): Story {
   }
 
   const compiled = (Array.isArray(raw.events) ? raw.events : [])
-    .map(compileEvent)
+    .map((event, index) => compileEvent(event, index, allowedImages))
     .filter((event): event is StoryEvent => event !== null)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const events = limitMotions(compiled)
+  const events = dedupeEventImages(limitMotions(compiled))
     .map((event, index) => ({
       ...event,
       id: `e${String(index + 1).padStart(2, "0")}`,
@@ -411,7 +427,7 @@ type WebSearchInputItem =
 type StreamInputItem = { role: "system" | "user"; content: string } | WebSearchInputItem;
 
 /** How many web_search round-trips one pass may take before we force writing. */
-const MAX_TOOL_ROUNDS = 2;
+const MAX_TOOL_ROUNDS = 5;
 
 /** Rounds that must end in a story before we give up (after the budget above). */
 const MAX_WRITE_ROUNDS = 2;
@@ -433,6 +449,11 @@ async function* runStoryPass(
     { role: "system", content: SYSTEM },
     { role: "user", content: userContent },
   ];
+  // Every image URL this pass actually saw, so an event can only attach a
+  // photograph the research returned (see eventImages.ts).
+  const allowedImages = new Set<string>();
+  // Images already streamed this pass; a story must not repeat a photo.
+  const usedImages = new Set<string>();
 
   for (let round = 0; round < MAX_TOOL_ROUNDS + MAX_WRITE_ROUNDS; round++) {
     // Round 0 is forced to search so every story is grounded in fresh results;
@@ -545,7 +566,7 @@ async function* runStoryPass(
       }
 
       while (emitted < progress.events.length) {
-        let compiled = compileEvent(progress.events[emitted] as RawEvent, emitted);
+        let compiled = compileEvent(progress.events[emitted] as RawEvent, emitted, allowedImages);
         emitted += 1;
         if (!compiled) continue;
         if (compiled.motion) {
@@ -557,6 +578,16 @@ async function* runStoryPass(
           }
         }
         lastStreamedKind = compiled.motion?.kind ?? null;
+        if (compiled.images) {
+          const kept = compiled.images.filter((image) => !usedImages.has(image.url));
+          for (const image of kept) usedImages.add(image.url);
+          if (kept.length === 0) {
+            const { images: _dropped, ...rest } = compiled;
+            compiled = rest;
+          } else {
+            compiled = { ...compiled, images: kept };
+          }
+        }
         yield { type: "event", event: compiled };
       }
     }
@@ -584,7 +615,9 @@ async function* runStoryPass(
             output = "Error: the query argument was missing or malformed.";
           } else {
             yield { type: "step", step: `Searching: “${query}”` };
-            output = formatSearchOutput(await webSearch(query));
+            const found = await webSearch(query);
+            for (const url of collectImageUrls(found)) allowedImages.add(url);
+            output = formatSearchOutput(found);
           }
         } catch (err) {
           output = `Search failed: ${err instanceof Error ? err.message : "unknown error"
@@ -618,7 +651,7 @@ async function* runStoryPass(
           events: progress.events as RawEvent[],
         };
       }
-      story = compileStory(topic, parsed);
+      story = compileStory(topic, parsed, allowedImages);
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(
@@ -648,6 +681,323 @@ async function* runStoryPass(
     return null;
   }
   return null;
+}
+
+/**
+ * The research prompt for refreshing a saved story with the latest news.
+ */
+const REFRESH_SYSTEM = `You research the latest developments of one ongoing news story and report back.
+You have the story compiled so far: its arc of events, each with a timestamp, and the date of its last event.
+
+Return STRICT JSON only, no markdown, with this shape:
+{
+  "events": [{
+    "beat": "escalation" | "turning-point" | "climax" | "now",
+    "title": string,
+    "narration": string,
+    "summary": string,
+    "consequence": string,
+    "timestamp": ISO-8601,
+    "category": "outbreak" | "response" | "science" | "politics" | "economy" | "milestone",
+    "magnitude": number (optional scale figure: cases, deaths, people, dollars),
+    "location": { "name": string, "country": string, "lat": number, "lng": number },
+    "motion": a map animation (see MOTION below), or omit,
+    "images": [{ "url": string, "caption": string, "sourceUrl": string }] (0–2, see IMAGES below),
+    "sources": [{
+      "publisher": string,
+      "title": string,
+      "url": string,
+      "publishedAt": ISO-8601,
+      "bias": { "politicalLean": "left"|"lean-left"|"center"|"lean-right"|"right"|"mixed", "factualRating": "very-high"|"high"|"mostly-factual"|"mixed"|"low"|"very-low", "note": string },
+      "corroborates": string[]
+    }]
+  }],
+  "status": "ongoing" | "concluded",
+  "epilogue": string
+}
+
+Rules:
+- WORKFLOW — research first, then write:
+  1. Call web_search first, before writing anything, for the latest news of the story since its last event.
+  2. If dates, figures, or the latest state are still uncertain, call web_search again with a specific follow-up query.
+  3. Only then write the JSON. Ground every event in the search results.
+- SEARCH BUDGET — at most 2 web_search round-trips. Cover "what happened since [last event date]" broadly on the first, pin down details on the second.
+- Documented events only. Nothing dated on or before the story's last event, and nothing after today: the model writing this story is not allowed to predict. Never repeat or rephrase an event already on the timeline.
+- If the search shows no documented development since the last event, return {"events":[],"status":"ongoing"} — do not pad with rewrites of old events.
+- 0 to 3 events, chronological. Each needs a real place with accurate lat/lng and 2 sources from real outlets that you found in the search.
+- The event fields follow the same rules as the story compiler: summary is 1–2 fact-first sentences, consequence is one documented result of at most 18 words, narration is 2 sentences of at most 35 words that pick up where the story left off, title is a vivid headline of at most 8 words with no dates. Never open narration with "After" or "On [date]".
+- beat: use "now" for the very last event you return — it is the story's new present. Mark "concluded" only when the record shows the story has definitively ended, and write "epilogue" then (2 sentences, at most 35 words, what it changed and what lingers).
+- Classify each outlet's bias from your knowledge of that publisher.
+- URLs must be real pages from the search results; if unsure, use the event's Wikipedia page. Never invent a URL path.
+IMAGES — the same rules as the story compiler: only image URLs verbatim from a web_search result (an "image:" line or the CANDIDATE IMAGES pool); attach 1 image only when it genuinely shows the event, 2 only when both clearly do; omit "images" when nothing depicts it; "caption" is one sourced line of at most 12 words; prefer the cited article's own image for "sourceUrl"; never reuse a photograph already on the timeline.
+MOTION — the same rules as the story compiler: animate only documented physical movement on the map (troops crossing a border, a storm making landfall, ships sailing, spread widening, refugees fleeing); speeches, votes, rulings, and announcements get no motion. 0 to 2 of the events you return carry motion, never two in a row of the same kind; pick the simplest kind that tells it ({ "kind": "impact" } at the place, { "kind": "spread", "radius": deg } widening from it, { "kind": "flow", "to": place } one movement out, { "kind": "sweep", "heading": deg, "radius": deg } a directional push, { "kind": "encircle", "radius": deg } a cordon, { "kind": "launch", "to": place } a high arc); every motion may add "actor": "troops" | "people" | "ships" | "aircraft" | "goods" | "aid" | "disease" | "news" matching what moved; motion places must be real with accurate coordinates; never invent a route; if unsure, omit motion.`;
+
+/**
+ * Refresh a saved story with the latest documented news: research what
+ * happened since its last event, stream each new event as it is compiled,
+ * then persist them. Yields step/event messages like the compile stream,
+ * and finally one `done` message carrying the saved story with the number
+ * of events added (0 when research found nothing new).
+ */
+export async function* refreshStoryStream(
+  slug: string,
+  signal?: AbortSignal
+): AsyncGenerator<StoryStreamMessage> {
+  const story = getStory(slug);
+  if (!story) {
+    yield { type: "error", error: "Story not found" };
+    return;
+  }
+  const lastEvent = story.events[story.events.length - 1];
+  if (!lastEvent) {
+    yield { type: "error", error: "That story has no events to update from." };
+    return;
+  }
+  // An already-concluded story has nothing left to catch up on.
+  if (story.status === "concluded") {
+    yield { type: "done", story, created: false, added: 0 };
+    return;
+  }
+
+  const client = getNebiusClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const lastAt = lastEvent.timestamp.slice(0, 10);
+  const outline = story.events
+    .map((event) => `- ${event.timestamp.slice(0, 10)} ${event.beat ?? ""}: ${event.title}`)
+    .join("\n");
+  const userContent = `Story: "${story.title}" — ${story.description}
+Today's date: ${today}.
+The story's arc so far (oldest first):
+${outline}
+The last event is dated ${lastAt}. Research what has been documented since then, and return only the new events.`;
+
+  const input: StreamInputItem[] = [
+    { role: "system", content: REFRESH_SYSTEM },
+    { role: "user", content: userContent },
+  ];
+  const allowedImages = new Set<string>();
+  const usedImages = new Set<string>(story.events.flatMap((event) => event.images?.map((i) => i.url) ?? []));
+
+  yield { type: "step", step: "Checking for the latest news" };
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS + MAX_WRITE_ROUNDS; round++) {
+    const writeOnly = round >= MAX_TOOL_ROUNDS;
+    if (writeOnly) {
+      yield {
+        type: "step",
+        step:
+          round === MAX_TOOL_ROUNDS
+            ? "Research budget reached — writing the update now"
+            : "Finishing the update",
+      };
+      input.push({
+        role: "user",
+        content:
+          "Do not call web_search again. Your research is complete. Write the complete JSON now, starting with {\"events\":",
+      });
+    }
+
+    const completion = await client.responses.create(
+      {
+        model: NEBIUS_MODEL,
+        input,
+        temperature: 0.7,
+        stream: true,
+        tools: [WEB_SEARCH_TOOL],
+        ...(round === 0 ? { tool_choice: { type: "function", name: "web_search" } as const } : {}),
+      },
+      { timeout: 115_000, signal }
+    );
+
+    let raw = "";
+    let emitted = 0;
+    let lastMeta = "";
+    let lastMotionKind: string | null = null;
+    let finishReason: string | null = null;
+    let streamError: string | null = null;
+    let earlyExit = false;
+    let pendingCalls: Array<{ call_id: string; name: string; arguments: string }> = [];
+    // Events from this round that passed the cutoff — the pass's final list.
+    const roundEvents: StoryEvent[] = [];
+    let addedCount = 0;
+
+    for await (const chunk of completion) {
+      if (signal?.aborted) return;
+      if (chunk.type === "response.reasoning_text.delta") continue;
+      if (chunk.type === "response.function_call_arguments.delta") continue;
+      if (chunk.type === "response.output_item.done") {
+        const item = chunk.item as { type?: string; call_id?: string; name?: string; arguments?: string };
+        if (item?.type === "function_call" && item.call_id) {
+          pendingCalls.push({
+            call_id: item.call_id,
+            name: item.name ?? "web_search",
+            arguments: item.arguments ?? "{}",
+          });
+        }
+        continue;
+      }
+      if (chunk.type !== "response.output_text.delta") {
+        if (chunk.type === "response.completed" || chunk.type === "response.incomplete") {
+          finishReason = chunk.type === "response.completed" ? "stop" : "length";
+          const finalText = chunk.response.output_text;
+          if (finalText && finalText.length >= raw.length) raw = finalText;
+        } else if (chunk.type === "error") {
+          streamError = chunk.message;
+          earlyExit = true;
+          break;
+        }
+        continue;
+      }
+      raw += chunk.delta;
+
+      const progress = extractStoryProgress(raw);
+      const meta = closedMeta(progress.meta);
+      if (meta) {
+        const key = JSON.stringify(meta);
+        if (key !== lastMeta) {
+          lastMeta = key;
+          yield { type: "meta", meta };
+        }
+      }
+
+      while (emitted < progress.events.length) {
+        let compiled = compileEvent(progress.events[emitted] as RawEvent, emitted, allowedImages);
+        emitted += 1;
+        if (!compiled) continue;
+
+        // Only events strictly after the story's last one are updates. The
+        // refresh prompt forbids the model repeating old events; this is the
+        // hard check that keeps the timeline append-only.
+        if (compiled.timestamp <= lastEvent.timestamp) {
+          continue;
+        }
+
+        // compileEvent numbers ids from e01, which the saved timeline already
+        // uses. Refresh events continue the `g…` numbering that generated
+        // events use, so streamed and saved ids always agree.
+        addedCount += 1;
+        const id = `g${String(story.events.length + addedCount).padStart(3, "0")}`;
+        compiled = {
+          ...compiled,
+          id,
+          sources: compiled.sources.map((source, sourceIndex) => ({
+            ...source,
+            id: `${id}-s${sourceIndex + 1}`,
+          })),
+        };
+
+        if (compiled.motion) {
+          if (compiled.motion.kind === lastMotionKind) {
+            const { motion: _dropped, ...rest } = compiled;
+            compiled = rest;
+          } else {
+            lastMotionKind = compiled.motion.kind;
+          }
+        }
+        if (compiled.images) {
+          const kept = compiled.images.filter((image) => !usedImages.has(image.url));
+          for (const image of kept) usedImages.add(image.url);
+          if (kept.length === 0) {
+            const { images: _dropped, ...rest } = compiled;
+            compiled = rest;
+          } else {
+            compiled = { ...compiled, images: kept };
+          }
+        }
+        roundEvents.push(compiled);
+        yield { type: "event", event: compiled };
+      }
+    }
+
+    if (signal?.aborted) return;
+    if (earlyExit) {
+      yield { type: "error", error: streamError ?? "The model stream failed." };
+      return;
+    }
+
+    if (pendingCalls.length > 0) {
+      for (const call of pendingCalls) {
+        let output: string;
+        try {
+          let query = "";
+          try {
+            const parsed = JSON.parse(call.arguments) as { query?: unknown };
+            query = typeof parsed.query === "string" ? parsed.query : "";
+          } catch {
+            // Malformed arguments count as an empty query.
+          }
+          if (!query) {
+            output = "Error: the query argument was missing or malformed.";
+          } else {
+            yield { type: "step", step: `Searching: “${query}”` };
+            const found = await webSearch(query);
+            for (const url of collectImageUrls(found)) allowedImages.add(url);
+            output = formatSearchOutput(found);
+          }
+        } catch (err) {
+          output = `Search failed: ${err instanceof Error ? err.message : "unknown error"
+            }. Rely on your documented knowledge.`;
+        }
+        input.push({ type: "function_call", call_id: call.call_id, name: call.name, arguments: call.arguments });
+        input.push({ type: "function_call_output", call_id: call.call_id, output });
+      }
+      continue;
+    }
+
+    yield { type: "step", step: "Finishing the update" };
+
+    // Nothing usable came back — treat it as "no new developments" instead
+    // of failing, so a story can simply be already up to date.
+    if (roundEvents.length === 0) {
+      yield { type: "done", story, created: false, added: 0 };
+      return;
+    }
+
+    let status: "ongoing" | "concluded" | undefined;
+    let epilogue: string | undefined;
+    let errorText: string | null = null;
+    try {
+      const parsed = parseModelJson(raw) as {
+        events?: unknown[];
+        status?: unknown;
+        epilogue?: unknown;
+        error?: unknown;
+      };
+      if (typeof parsed.status === "string") {
+        status = parsed.status === "concluded" ? "concluded" : "ongoing";
+      }
+      if (typeof parsed.epilogue === "string") {
+        const value = parsed.epilogue.replace(/\s+/g, " ").trim().slice(0, 300);
+        if (value) epilogue = value;
+      }
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        errorText = parsed.error.trim();
+      }
+    } catch {
+      // The JSON never closed cleanly (a stream cut). Keep the events already
+      // streamed; the meta patch just stays open.
+    }
+
+    if (errorText) {
+      yield { type: "error", error: errorText };
+      return;
+    }
+
+    // Ids were already assigned at stream time; only the cutoff and order
+    // still matter here. A round's later search may surface an event dated
+    // before the cutoff that slipped through the streaming check.
+    const fresh = roundEvents
+      .filter((event) => event.timestamp > lastEvent.timestamp)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+
+    const saved = appendStoryEvents(slug, fresh, {
+      ...(status ? { status } : {}),
+      ...(status === "concluded" && epilogue ? { epilogue } : {}),
+    });
+    yield { type: "done", story: saved, created: false, added: fresh.length };
+    return;
+  }
+  yield { type: "done", story: getStory(slug) ?? story, created: false, added: 0 };
 }
 
 /**

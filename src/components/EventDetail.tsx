@@ -8,6 +8,7 @@ import type {
 } from "@/lib/types";
 import { motionCaption } from "@/lib/mapMotion";
 import BiasBadge from "./BiasBadge";
+import EventImageFigure from "./EventImageFigure";
 import {
   BEAT_LABELS,
   CATEGORY_COLORS,
@@ -123,6 +124,15 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
           <p className="-mt-3 border-l-2 border-sky-500/40 pl-3 text-[12px] italic leading-relaxed text-slate-400">
             {event.consequence}
           </p>
+        )}
+
+        {/* Photographs harvested from the coverage this event cites */}
+        {event.images && event.images.length > 0 && (
+          <section className="-mt-2 space-y-3">
+            {event.images.map((image) => (
+              <EventImageFigure key={image.url} image={image} />
+            ))}
+          </section>
         )}
 
         {/* Sources with bias profiles */}

@@ -109,6 +109,69 @@ export function getStory(slug: string): Story | null {
   return loadStory(slug);
 }
 
+/**
+ * Append new events to a saved story: one JSON file per event, plus an
+ * optional meta patch (a refresh that concluded the story, a closing epilogue).
+ * Returns the reloaded story with events re-sorted.
+ */
+export function appendStoryEvents(
+  slug: string,
+  events: StoryEvent[],
+  patch?: { status?: "ongoing" | "concluded"; epilogue?: string }
+): Story {
+  const existing = getStory(slug);
+  if (!existing) {
+    throw new Error(`Story "${slug}" not found`);
+  }
+  const dir = path.join(DATA_DIR, slug);
+  const metaPath = path.join(dir, "meta.json");
+  const eventsDir = path.join(dir, "events");
+  fs.mkdirSync(eventsDir, { recursive: true });
+
+  for (const event of events) {
+    const fileSlug = event.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 40);
+    fs.writeFileSync(
+      path.join(eventsDir, `${event.id}${fileSlug ? `-${fileSlug}` : ""}.json`),
+      JSON.stringify(event, null, 2) + "\n"
+    );
+  }
+
+  // The "now" beat marks the newest development. When newer events land
+  // after it, the old one is no longer the story's present: demote it.
+  const prevLast = existing.events[existing.events.length - 1];
+  if (events.length > 0 && prevLast?.beat === "now") {
+    for (const file of fs.readdirSync(eventsDir)) {
+      if (!file.endsWith(".json")) continue;
+      const filePath = path.join(eventsDir, file);
+      const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as StoryEvent;
+      if (data.id !== prevLast.id) continue;
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({ ...data, beat: "escalation" } satisfies StoryEvent, null, 2) + "\n"
+      );
+      break;
+    }
+  }
+
+  const meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as StoryMeta;
+  if (patch?.status) meta.status = patch.status;
+  if (patch?.epilogue) meta.epilogue = patch.epilogue;
+  if (patch?.status === "concluded" && !meta.endAt) {
+    const existingLast = existing.events[existing.events.length - 1]?.timestamp ?? "";
+    const newLast = events[events.length - 1]?.timestamp ?? "";
+    meta.endAt = existingLast > newLast ? existingLast : newLast;
+  }
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
+
+  const updated = loadStory(slug);
+  if (!updated) throw new Error(`Story "${slug}" not found`);
+  return updated;
+}
+
 /** Persist a generated event as a new JSON file in the story's events dir. */
 export function saveGeneratedEvent(slug: string, generated: GeneratedEvent): StoryEvent {
   const eventsDir = path.join(DATA_DIR, slug, "events");

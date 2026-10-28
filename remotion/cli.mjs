@@ -98,6 +98,12 @@ async function stageStory(slug) {
       ...(event.magnitude ? { magnitude: event.magnitude } : {}),
       location: event.location,
       ...(event.motion ? { motion: event.motion } : {}),
+      images: (event.images ?? [])
+        .slice(0, 2)
+        .map((image) => ({
+          url: image.url,
+          ...(image.caption ? { caption: image.caption } : {}),
+        })),
       sources: (event.sources ?? []).map((source) => ({
         id: source.id,
         publisher: source.publisher,
