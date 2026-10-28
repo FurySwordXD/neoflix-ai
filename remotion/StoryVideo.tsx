@@ -10,10 +10,13 @@ import { formatLongDate, formatRange } from "./format";
 import { aimAt, lerpAngle } from "./geo";
 import type { VideoEvent, VideoManifest } from "./types";
 
-export interface StoryVideoProps {
+// A type alias (not an interface): Remotion's Composition requires props to
+// satisfy `Record<string, unknown>`, which needs an implicit index signature
+// that interfaces don't get.
+export type StoryVideoProps = {
   slug: string;
   manifest: VideoManifest | null;
-}
+};
 
 const FONT = '"Segoe UI", system-ui, -apple-system, sans-serif';
 

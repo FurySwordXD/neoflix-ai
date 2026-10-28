@@ -1,4 +1,4 @@
-import { createRoot, extend, flushSync, useLoader, useThree } from "@react-three/fiber";
+import { createRoot, extend, flushSync, useLoader, useThree, type Catalogue } from "@react-three/fiber";
 import { Suspense, useInsertionEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { Internals, staticFile, useCurrentFrame, useDelayRender, useRemotionEnvironment, useVideoConfig } from "remotion";
 import * as THREE from "three";
@@ -10,7 +10,12 @@ import { CATEGORY_COLORS } from "../src/lib/ui";
 import { latLngToVector, type GlobeAim } from "./geo";
 import type { VideoEvent } from "./types";
 
-extend(THREE);
+// This file uses the low-level createRoot() API, so fiber's built-in
+// extend(THREE) inside <Canvas> never runs — registration here is required.
+// The cast only silences the Catalogue check (THREE exports non-constructors
+// like REVISION); JSX element typing is derived from typeof THREE statically,
+// so it is unaffected.
+extend(THREE as unknown as Catalogue);
 
 const STAR_COUNT = 160;
 
