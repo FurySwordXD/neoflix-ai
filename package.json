@@ -8,12 +8,17 @@
     "start": "next start",
     "video": "node remotion/cli.mjs studio",
     "render:story": "node remotion/cli.mjs render",
-    "stage:stories": "node remotion/cli.mjs stage"
+    "stage:stories": "node remotion/cli.mjs stage",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage",
+    "graph:import": "tsx scripts/import-stories.ts",
+    "sync:trends": "tsx scripts/sync-trends.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.74.0",
     "@remotion/player": "^4.0.539",
     "@remotion/web-renderer": "4.0.539",
+    "neo4j-driver": "^6.2.0",
     "next": "^16.4.3",
     "openai": "^7.45.1",
     "react": "^19.3.1",
@@ -27,12 +32,16 @@
     "@remotion/media": "^4.0.539",
     "@remotion/three": "^4.0.539",
     "@tailwindcss/postcss": "^4.3.3",
+    "@testcontainers/neo4j": "^12.2.1",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
+    "@vitest/coverage-v8": "^5.0.5",
     "remotion": "^4.0.539",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2"
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }
