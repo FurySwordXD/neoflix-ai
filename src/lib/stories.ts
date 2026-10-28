@@ -1,212 +1,84 @@
-import fs from "fs";
 import path from "path";
-import { limitMotions } from "./mapMotion";
-import type { Story, StoryEvent, GeneratedEvent } from "./types";
+import { createFileStore } from "./storyStore/fileStore";
+import { getDriver, neo4jConfigFromEnv } from "./storyStore/neo4j";
+import { createNeo4jStore } from "./storyStore/neo4jStore";
+import type { StoryListItem, StoryMeta, StoryPatch, StoryStore } from "./storyStore/types";
+import type { GeneratedEvent, Story, StoryEvent } from "./types";
+
+export type { StoryMeta, StoryListItem, StoryPatch } from "./storyStore/types";
 
 /**
- * File-backed story store. Today: JSON files on disk. Tomorrow: swap this
- * module for a graph DB client — nothing else in the app needs to change.
+ * The app's story store. STORY_STORE picks where stories live: "file"
+ * (default, JSON under DATA_DIR) or "neo4j" (the graph shared with
+ * news-scraper). Media caches (voice-overs) always stay under DATA_DIR.
  */
 export const DATA_DIR = path.join(process.cwd(), "src/data/stories");
 
-function loadStory(slug: string): Story | null {
-  const storyDir = path.join(DATA_DIR, slug);
-  const metaPath = path.join(storyDir, "meta.json");
-  if (!fs.existsSync(metaPath)) return null;
+export type StoreKind = "file" | "neo4j";
+type Env = Record<string, string | undefined>;
 
-  const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-  const eventsDir = path.join(storyDir, "events");
-  const events: StoryEvent[] = fs
-    .readdirSync(eventsDir)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => JSON.parse(fs.readFileSync(path.join(eventsDir, f), "utf8")))
-    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-  // Stories saved under an older, busier prompt get the same motion budget.
-  return { ...meta, events: limitMotions(events) };
+export function storeKindFromEnv(env: Env = process.env): StoreKind {
+  const value = (env.STORY_STORE ?? "").trim().toLowerCase() || "file";
+  if (value === "file" || value === "neo4j") return value;
+  throw new Error(`STORY_STORE must be "file" or "neo4j" (got "${env.STORY_STORE}").`);
 }
 
-export type StoryMeta = Omit<Story, "events">;
-
-/** Story records without their event files — enough to match a query. */
-export function listStoryMetas(): StoryMeta[] {
-  if (!fs.existsSync(DATA_DIR)) return [];
-  return fs
-    .readdirSync(DATA_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => {
-      const metaPath = path.join(DATA_DIR, d.name, "meta.json");
-      if (!fs.existsSync(metaPath)) return null;
-      return JSON.parse(fs.readFileSync(metaPath, "utf8")) as StoryMeta;
-    })
-    .filter((s): s is StoryMeta => s !== null && typeof s.slug === "string");
+/** Builds the store the env asks for. Throws a clear error when neo4j is selected but not configured. */
+export function createStoryStore(env: Env = process.env, dataDir: string = DATA_DIR): StoryStore {
+  if (storeKindFromEnv(env) === "file") return createFileStore(dataDir);
+  const config = neo4jConfigFromEnv(env);
+  return createNeo4jStore({ driver: getDriver(config), database: config.database });
 }
 
-export function listStories(): Array<Pick<Story, "slug" | "title" | "subtitle" | "status" | "startAt" | "endAt">> {
-  return listStoryMetas().map(({ slug, title, subtitle, status, startAt, endAt }) => ({
-    slug,
-    title,
-    subtitle,
-    status,
-    startAt,
-    endAt,
-  }));
+const cache = globalThis as unknown as { __algonewsStoryStore?: StoryStore };
+
+/** The process-wide store, built on first use. */
+export function getStoryStore(): StoryStore {
+  cache.__algonewsStoryStore ??= createStoryStore();
+  return cache.__algonewsStoryStore;
 }
 
-/** Remember a query that resolved to this story so the same ask opens it next time. */
-export function rememberQuery(slug: string, query: string): void {
-  const metaPath = path.join(DATA_DIR, slug, "meta.json");
-  if (!fs.existsSync(metaPath)) return;
-  const meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as StoryMeta;
-  const trimmed = query.trim().slice(0, 200);
-  if (!trimmed) return;
-  const queries = Array.isArray(meta.queries) ? meta.queries : [];
-  if (queries.some((q) => q.toLowerCase() === trimmed.toLowerCase())) return;
-  meta.queries = [...queries, trimmed].slice(-24);
-  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
+/** Use this store for every call from now on (tests, scripts with a fake or temp store). */
+export function setStoryStore(store: StoryStore): void {
+  cache.__algonewsStoryStore = store;
 }
 
-/** Write a brand-new story. Refuses to overwrite a slug that already has a meta file. */
-export function saveNewStory(story: Story): Story {
-  const dir = path.join(DATA_DIR, story.slug);
-  const metaPath = path.join(dir, "meta.json");
-  if (fs.existsSync(metaPath)) {
-    const existing = loadStory(story.slug);
-    if (existing) return existing;
-  }
-
-  fs.mkdirSync(path.join(dir, "events"), { recursive: true });
-  for (const event of story.events) {
-    const fileSlug = event.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(0, 40);
-    fs.writeFileSync(
-      path.join(dir, "events", `${event.id}${fileSlug ? `-${fileSlug}` : ""}.json`),
-      JSON.stringify(event, null, 2) + "\n"
-    );
-  }
-
-  const meta: StoryMeta = {
-    slug: story.slug,
-    title: story.title,
-    subtitle: story.subtitle,
-    description: story.description,
-    status: story.status,
-    startAt: story.startAt,
-    relatedStories: story.relatedStories,
-    ...(story.endAt ? { endAt: story.endAt } : {}),
-    ...(story.hook ? { hook: story.hook } : {}),
-    ...(story.epilogue ? { epilogue: story.epilogue } : {}),
-    ...(story.queries ? { queries: story.queries } : {}),
-  };
-  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
-  return story;
+/** Drop the cached store so the next call reads the env again. */
+export function resetStoryStore(): void {
+  cache.__algonewsStoryStore = undefined;
 }
 
-export function getStory(slug: string): Story | null {
-  return loadStory(slug);
+export function listStoryMetas(): Promise<StoryMeta[]> {
+  return getStoryStore().listStoryMetas();
+}
+
+export function listStories(): Promise<StoryListItem[]> {
+  return getStoryStore().listStories();
+}
+
+export function getStory(slug: string): Promise<Story | null> {
+  return getStoryStore().getStory(slug);
+}
+
+/** Write a brand-new story. An already-saved slug returns the saved story untouched. */
+export function saveNewStory(story: Story): Promise<Story> {
+  return getStoryStore().saveNewStory(story);
 }
 
 /**
- * Append new events to a saved story: one JSON file per event, plus an
- * optional meta patch (a refresh that concluded the story, a closing epilogue).
- * Returns the reloaded story with events re-sorted.
+ * Append new events to a saved story, plus an optional meta patch (a refresh
+ * that concluded the story, a closing epilogue). Returns the reloaded story.
  */
-export function appendStoryEvents(
-  slug: string,
-  events: StoryEvent[],
-  patch?: { status?: "ongoing" | "concluded"; epilogue?: string }
-): Story {
-  const existing = getStory(slug);
-  if (!existing) {
-    throw new Error(`Story "${slug}" not found`);
-  }
-  const dir = path.join(DATA_DIR, slug);
-  const metaPath = path.join(dir, "meta.json");
-  const eventsDir = path.join(dir, "events");
-  fs.mkdirSync(eventsDir, { recursive: true });
-
-  for (const event of events) {
-    const fileSlug = event.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(0, 40);
-    fs.writeFileSync(
-      path.join(eventsDir, `${event.id}${fileSlug ? `-${fileSlug}` : ""}.json`),
-      JSON.stringify(event, null, 2) + "\n"
-    );
-  }
-
-  // The "now" beat marks the newest development. When newer events land
-  // after it, the old one is no longer the story's present: demote it.
-  const prevLast = existing.events[existing.events.length - 1];
-  if (events.length > 0 && prevLast?.beat === "now") {
-    for (const file of fs.readdirSync(eventsDir)) {
-      if (!file.endsWith(".json")) continue;
-      const filePath = path.join(eventsDir, file);
-      const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as StoryEvent;
-      if (data.id !== prevLast.id) continue;
-      fs.writeFileSync(
-        filePath,
-        JSON.stringify({ ...data, beat: "escalation" } satisfies StoryEvent, null, 2) + "\n"
-      );
-      break;
-    }
-  }
-
-  const meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as StoryMeta;
-  if (patch?.status) meta.status = patch.status;
-  if (patch?.epilogue) meta.epilogue = patch.epilogue;
-  if (patch?.status === "concluded" && !meta.endAt) {
-    const existingLast = existing.events[existing.events.length - 1]?.timestamp ?? "";
-    const newLast = events[events.length - 1]?.timestamp ?? "";
-    meta.endAt = existingLast > newLast ? existingLast : newLast;
-  }
-  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
-
-  const updated = loadStory(slug);
-  if (!updated) throw new Error(`Story "${slug}" not found`);
-  return updated;
+export function appendStoryEvents(slug: string, events: StoryEvent[], patch?: StoryPatch): Promise<Story> {
+  return getStoryStore().appendStoryEvents(slug, events, patch);
 }
 
-/** Persist a generated event as a new JSON file in the story's events dir. */
-export function saveGeneratedEvent(slug: string, generated: GeneratedEvent): StoryEvent {
-  const eventsDir = path.join(DATA_DIR, slug, "events");
-  if (!fs.existsSync(eventsDir)) {
-    throw new Error(`Story "${slug}" not found`);
-  }
+/** Persist a generated event under the story's next `g###` id. */
+export function saveGeneratedEvent(slug: string, generated: GeneratedEvent): Promise<StoryEvent> {
+  return getStoryStore().saveGeneratedEvent(slug, generated);
+}
 
-  const existing = fs
-    .readdirSync(eventsDir)
-    .filter((f) => f.endsWith(".json"));
-  const id = `g${String(existing.length + 1).padStart(3, "0")}`;
-  const fileSlug = generated.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 40);
-
-  const event: StoryEvent = {
-    ...generated,
-    id,
-    sources: generated.sources.map((s, i) => ({
-      corroborates: [],
-      ...s,
-      bias: s.bias ?? {
-        politicalLean: "mixed",
-        factualRating: "mixed",
-        note: "Bias classification pending review",
-      },
-      id: `${id}-s${i + 1}`,
-    })),
-  };
-
-  fs.writeFileSync(
-    path.join(eventsDir, `${id}-${fileSlug}.json`),
-    JSON.stringify(event, null, 2) + "\n"
-  );
-  return event;
+/** Remember a query that resolved to this story so the same ask opens it next time. */
+export function rememberQuery(slug: string, query: string): Promise<void> {
+  return getStoryStore().rememberQuery(slug, query);
 }

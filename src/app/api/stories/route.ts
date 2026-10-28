@@ -7,7 +7,7 @@ export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ stories: listStories() });
+  return NextResponse.json({ stories: await listStories() });
 }
 
 /**

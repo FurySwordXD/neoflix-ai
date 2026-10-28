@@ -45,6 +45,6 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const { job, httpStatus } = startVideoRender(slug);
+  const { job, httpStatus } = await startVideoRender(slug);
   return NextResponse.json(job, { status: httpStatus });
 }

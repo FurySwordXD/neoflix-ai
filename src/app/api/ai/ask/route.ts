@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "slug and question are required" }, { status: 400 });
   }
 
-  const story = getStory(slug);
+  const story = await getStory(slug);
   if (!story) {
     return NextResponse.json({ error: "Story not found" }, { status: 404 });
   }

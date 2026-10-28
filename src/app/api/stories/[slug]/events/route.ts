@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  if (!getStory(slug)) {
+  if (!(await getStory(slug))) {
     return NextResponse.json({ error: "Story not found" }, { status: 404 });
   }
 
@@ -21,10 +21,12 @@ export async function POST(
   }
 
   try {
-    const saved = (events as GeneratedEvent[]).map((e) =>
-      saveGeneratedEvent(slug, e)
-    );
-    const story = getStory(slug);
+    // One at a time: each event's g### id depends on the ones saved before it.
+    const saved = [];
+    for (const event of events as GeneratedEvent[]) {
+      saved.push(await saveGeneratedEvent(slug, event));
+    }
+    const story = await getStory(slug);
     return NextResponse.json({ saved, story }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to save events";
