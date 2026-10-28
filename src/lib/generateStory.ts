@@ -5,7 +5,9 @@ import { getNebiusClient, NEBIUS_MODEL, parseJsonResponse } from "./nebius";
 import { appendStoryEvents, getStory, listStoryMetas, rememberQuery, saveNewStory } from "./stories";
 import { findExistingStory, slugify } from "./storyMatch";
 import { extractStoryProgress, type StoryStreamMessage, type StoryStreamMeta } from "./storyStream";
-import { collectImageUrls, formatSearchOutput, webSearch } from "./webSearch";
+import { researchQuery } from "./graphResearch";
+import { enterStoryLease } from "./trendSync/storyLease";
+import { collectImageUrls, formatSearchOutput } from "./webSearch";
 import type {
   FactualRating,
   PoliticalLean,
@@ -615,7 +617,7 @@ async function* runStoryPass(
             output = "Error: the query argument was missing or malformed.";
           } else {
             yield { type: "step", step: `Searching: “${query}”` };
-            const found = await webSearch(query);
+            const found = await researchQuery(query);
             for (const url of collectImageUrls(found)) allowedImages.add(url);
             output = formatSearchOutput(found);
           }
@@ -665,22 +667,23 @@ async function* runStoryPass(
       return null;
     }
 
-    const again =
-      getStory(story.slug) ??
-      (() => {
-        const meta = findExistingStory(story.title, listStoryMetas());
-        return meta ? getStory(meta.slug) : null;
-      })();
+    const again = (await getStory(story.slug)) ?? (await findSavedStory(story.title));
     if (again) {
-      rememberQuery(again.slug, topic);
+      await rememberQuery(again.slug, topic);
       yield { type: "done", story: again, created: false };
       return null;
     }
 
-    yield { type: "done", story: saveNewStory(story), created: true };
+    yield { type: "done", story: await saveNewStory(story), created: true };
     return null;
   }
   return null;
+}
+
+/** The saved story a title matches, if any. */
+async function findSavedStory(title: string): Promise<Story | null> {
+  const meta = findExistingStory(title, await listStoryMetas());
+  return meta ? getStory(meta.slug) : null;
 }
 
 /**
@@ -743,7 +746,7 @@ export async function* refreshStoryStream(
   slug: string,
   signal?: AbortSignal
 ): AsyncGenerator<StoryStreamMessage> {
-  const story = getStory(slug);
+  const story = await getStory(slug);
   if (!story) {
     yield { type: "error", error: "Story not found" };
     return;
@@ -930,7 +933,7 @@ The last event is dated ${lastAt}. Research what has been documented since then,
             output = "Error: the query argument was missing or malformed.";
           } else {
             yield { type: "step", step: `Searching: “${query}”` };
-            const found = await webSearch(query);
+            const found = await researchQuery(query);
             for (const url of collectImageUrls(found)) allowedImages.add(url);
             output = formatSearchOutput(found);
           }
@@ -990,14 +993,14 @@ The last event is dated ${lastAt}. Research what has been documented since then,
       .filter((event) => event.timestamp > lastEvent.timestamp)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
 
-    const saved = appendStoryEvents(slug, fresh, {
+    const saved = await appendStoryEvents(slug, fresh, {
       ...(status ? { status } : {}),
       ...(status === "concluded" && epilogue ? { epilogue } : {}),
     });
     yield { type: "done", story: saved, created: false, added: fresh.length };
     return;
   }
-  yield { type: "done", story: getStory(slug) ?? story, created: false, added: 0 };
+  yield { type: "done", story: (await getStory(slug)) ?? story, created: false, added: 0 };
 }
 
 /**
@@ -1012,27 +1015,40 @@ export async function* generateStoryStream(
   signal?: AbortSignal
 ): AsyncGenerator<StoryStreamMessage> {
   const trimmed = query.trim();
-  const existing = findExistingStory(trimmed, listStoryMetas());
+  const existing = findExistingStory(trimmed, await listStoryMetas());
   if (existing) {
-    const story = getStory(existing.slug);
+    const story = await getStory(existing.slug);
     if (story) {
-      rememberQuery(story.slug, trimmed);
+      await rememberQuery(story.slug, trimmed);
       yield { type: "cached", story };
       return;
     }
   }
 
-  const client = getNebiusClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const baseContent = `Topic: ${trimmed}\nToday's date: ${today}. Compile the documented history up to that date.`;
-
-  let refusal = yield* runStoryPass(client, baseContent, trimmed, signal);
-  if (refusal) {
-    const corrective = `${baseContent}\n\nYou answered: "${refusal}". That refusal is wrong for this app. The topic names an event that has not happened yet, so the story is the documented history that leads up to it: the real events so far that make the scenario live. Set "status" to "ongoing" and end on the latest documented development as the "now" event. Every event must still be documented on or before today — never invent, predict, or date anything after today. Build the story through its connection chains: the 2–3 real driving factors behind it (for example, immigration and the economy for US midterm elections), each with its own documented mini-chain of events woven into the arc. Try again, and do not return {"error": ...} unless the topic is pure fiction with no real events behind it.`;
-    refusal = yield* runStoryPass(client, corrective, trimmed, signal);
+  // With STORY_STORE=neo4j, one requester per story generates; the rest wait
+  // for its save and open that (a no-op in file mode).
+  const lease = yield* enterStoryLease(trimmed, signal);
+  if (lease.story) {
+    await rememberQuery(lease.story.slug, trimmed);
+    yield { type: "cached", story: lease.story };
+    return;
   }
-  if (refusal) {
-    yield { type: "error", error: refusal };
+  try {
+    if (signal?.aborted) return;
+    const client = getNebiusClient();
+    const today = new Date().toISOString().slice(0, 10);
+    const baseContent = `Topic: ${trimmed}\nToday's date: ${today}. Compile the documented history up to that date.`;
+
+    let refusal = yield* runStoryPass(client, baseContent, trimmed, signal);
+    if (refusal) {
+      const corrective = `${baseContent}\n\nYou answered: "${refusal}". That refusal is wrong for this app. The topic names an event that has not happened yet, so the story is the documented history that leads up to it: the real events so far that make the scenario live. Set "status" to "ongoing" and end on the latest documented development as the "now" event. Every event must still be documented on or before today — never invent, predict, or date anything after today. Build the story through its connection chains: the 2–3 real driving factors behind it (for example, immigration and the economy for US midterm elections), each with its own documented mini-chain of events woven into the arc. Try again, and do not return {"error": ...} unless the topic is pure fiction with no real events behind it.`;
+      refusal = yield* runStoryPass(client, corrective, trimmed, signal);
+    }
+    if (refusal) {
+      yield { type: "error", error: refusal };
+    }
+  } finally {
+    await lease.release();
   }
 }
 
