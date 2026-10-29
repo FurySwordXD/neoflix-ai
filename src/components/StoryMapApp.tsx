@@ -511,7 +511,7 @@ export default function StoryMapApp({
             >
               ← Interactive
             </button>
-            <RenderVideoButton slug={story.slug} />
+            {/* <RenderVideoButton slug={story.slug} /> */}
           </div>
           <ImmersivePreview key={story.slug} slug={story.slug} />
         </div>
