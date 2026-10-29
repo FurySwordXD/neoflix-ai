@@ -37,7 +37,7 @@ export async function DELETE(
   }
   try {
     await deleteStory(slug); // silent no-op when nothing is saved
-    await deleteVoiceoverCache(slug);
+    deleteVoiceoverCache(slug);
     cancelVideoRender(slug);
     deleteVideoArtifact(slug);
     // The Firebase mirror is best-effort; a leftover clip is never referenced again.

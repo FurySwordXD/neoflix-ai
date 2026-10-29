@@ -123,6 +123,32 @@ function silentFrames(event, script) {
   return Math.round(seconds * FPS);
 }
 
+/**
+ * One event's voice-over as the API serves it: the narration script plus the
+ * public Firebase Storage URL of its clip (null when the clip was never
+ * generated or Firebase isn't configured). A cold clip is generated on
+ * demand, so this call gets a far longer timeout than plain story reads.
+ */
+async function loadVoiceover(slug, event) {
+  try {
+    const res = await fetch(
+      `${apiUrl}/api/stories/${encodeURIComponent(slug)}/events/${encodeURIComponent(event.id)}/voiceover`,
+      { signal: AbortSignal.timeout(90_000) }
+    );
+    if (!res.ok) throw new Error(`voiceover returned ${res.status}`);
+    const vo = await res.json();
+    return { script: vo.script ?? null, audioUrl: vo.audioUrl ?? null };
+  } catch {
+    return { script: null, audioUrl: null };
+  }
+}
+
+async function downloadAudio(url, destPath) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`GET ${url} returned ${res.status}`);
+  fs.writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
+}
+
 async function stageStory(story) {
   const { slug, events: unsorted, ...meta } = story;
   const events = [...(unsorted ?? [])].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
@@ -138,19 +164,22 @@ async function stageStory(story) {
   let cursor = TITLE_FRAMES;
   const staged = [];
   for (const event of events) {
-    const audioSrc = path.join(dataDir, slug, "voiceover", `${event.id}.mp3`);
-    const scriptPath = path.join(dataDir, slug, "voiceover", `${event.id}.json`);
-    const script =
-      (fs.existsSync(scriptPath) ? readJson(scriptPath).script ?? null : null) ??
-      event.narration ??
-      null;
+    const vo = await loadVoiceover(slug, event);
+    const script = vo.script ?? event.narration ?? null;
 
     let audio = null;
     let audioSeconds = null;
-    if (fs.existsSync(audioSrc)) {
-      fs.copyFileSync(audioSrc, path.join(dest, `${event.id}.mp3`));
-      audio = `remotion/${slug}/${event.id}.mp3`;
-      audioSeconds = await audioDurationSeconds(audioSrc);
+    if (vo.audioUrl) {
+      const audioDest = path.join(dest, `${event.id}.mp3`);
+      try {
+        await downloadAudio(vo.audioUrl, audioDest);
+      } catch (err) {
+        console.error(`Could not fetch the ${event.id} clip:`, err instanceof Error ? err.message : err);
+      }
+      if (fs.existsSync(audioDest)) {
+        audio = `remotion/${slug}/${event.id}.mp3`;
+        audioSeconds = await audioDurationSeconds(audioDest);
+      }
     }
 
     const audioFrames = audioSeconds ? Math.ceil(audioSeconds * FPS) : 0;

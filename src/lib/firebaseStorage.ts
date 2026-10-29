@@ -4,12 +4,12 @@ import { cert, getApps, initializeApp, type App, type ServiceAccount } from "fir
 import { getStorage } from "firebase-admin/storage";
 
 /**
- * Voice-over audio is mirrored to Firebase Storage so it is served from a
- * public download URL instead of this server. Every object lives under the
+ * Voice-over audio lives in Firebase Storage so it is served from a public
+ * download URL instead of this server. Every object lives under the
  * "neoflix" root: neoflix/<story-slug>/<event-id>.mp3.
  *
- * Firebase is optional: when the service account file is missing or the
- * upload fails, callers fall back to serving the local cache.
+ * Firebase is optional: when it is not configured or unreachable, callers
+ * serve the narration script only and the browser's speech synthesis reads it.
  */
 
 const ROOT = "neoflix";
@@ -43,6 +43,29 @@ function bucketName(account: ServiceAccount): string {
   return process.env.FIREBASE_STORAGE_BUCKET ?? `${account.projectId}.firebasestorage.app`;
 }
 
+/** True when a service account is configured, so clips have somewhere to live. */
+export async function firebaseConfigured(): Promise<boolean> {
+  return (await loadServiceAccount()) !== null;
+}
+
+/**
+ * True when the bucket answers a cheap request. Used to skip TTS entirely
+ * when Storage is down: synthesizing audio that cannot be stored only burns
+ * credits. Errors count as "not ready" — the fallback is browser TTS.
+ */
+export async function firebaseReachable(): Promise<boolean> {
+  const account = await loadServiceAccount();
+  const app = account && (await firebaseApp());
+  if (!account || !app) return false;
+  try {
+    // A 404 answer is still an answer: an unreachable bucket throws instead.
+    const [exists] = await getStorage(app).bucket(bucketName(account)).exists();
+    return exists === true;
+  } catch {
+    return false;
+  }
+}
+
 /** The admin app, or null when Firebase isn't configured for this deployment. */
 function firebaseApp(): Promise<App | null> {
   appPromise ??= (async () => {
@@ -64,13 +87,16 @@ function firebaseApp(): Promise<App | null> {
  * Uploads the narration audio and returns its public download URL, or null
  * when Firebase isn't configured. The download token is the audio's version
  * hash, so a regenerated clip gets a fresh URL while replays reuse the same
- * cached one.
+ * cached one. The script and its hash ride along as object metadata, so a
+ * cold serverless instance can restore the clip without regenerating it.
  */
 export async function uploadVoiceover(
   slug: string,
   eventId: string,
   audio: Buffer,
-  audioVersion: string
+  audioVersion: string,
+  script: string,
+  scriptHash: string
 ): Promise<string | null> {
   if (!SLUG_RE.test(slug) || !EVENT_ID_RE.test(eventId)) return null;
   const account = await loadServiceAccount();
@@ -85,13 +111,53 @@ export async function uploadVoiceover(
       resumable: false,
       metadata: {
         cacheControl: "public, max-age=31536000, immutable",
-        metadata: { firebaseStorageDownloadTokens: audioVersion },
+        metadata: {
+          firebaseStorageDownloadTokens: audioVersion,
+          "neoflix-script": script,
+          "neoflix-script-hash": scriptHash,
+        },
       },
     });
     return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(objectPath)}?alt=media&token=${audioVersion}`;
   } catch (err) {
     console.error("Voice-over upload failed:", err instanceof Error ? err.message : err);
     return null;
+  }
+}
+
+/**
+ * Looks up a previously uploaded clip for a story event whose script is
+ * unchanged. Returns the script, the audio's version hash (the download
+ * token) and its public URL — or null when no usable clip is stored: the
+ * object is missing, its metadata is from an older format, or Storage is
+ * unreachable. A stale script hash is treated as no clip, so the caller
+ * regenerates once and re-uploads with fresh metadata.
+ */
+export async function findUploadedVoiceover(
+  slug: string,
+  eventId: string,
+  scriptHash: string
+): Promise<{ script: string; audioHash: string; audioUrl: string } | null> {
+  if (!SLUG_RE.test(slug) || !EVENT_ID_RE.test(eventId)) return null;
+  const account = await loadServiceAccount();
+  const app = account && (await firebaseApp());
+  if (!account || !app) return null;
+  const bucket = bucketName(account);
+  const objectPath = `${ROOT}/${slug}/${eventId}.mp3`;
+  try {
+    const [metadata] = await getStorage(app).bucket(bucket).file(objectPath).getMetadata();
+    const stored = (metadata.metadata ?? {}) as Record<string, string | undefined>;
+    const audioHash = stored.firebaseStorageDownloadTokens;
+    const script = stored["neoflix-script"];
+    if (!audioHash || !script || stored["neoflix-script-hash"] !== scriptHash) return null;
+    return {
+      script,
+      audioHash,
+      audioUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(objectPath)}?alt=media&token=${audioHash}`,
+    };
+  } catch (err) {
+    console.error("Voice-over lookup failed:", err instanceof Error ? err.message : err);
+    return null; // not uploaded yet, or Firebase is unreachable
   }
 }
 

@@ -1,16 +1,15 @@
 import crypto from "crypto";
-import fs from "fs/promises";
-import path from "path";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
-import { uploadVoiceover } from "./firebaseStorage";
-import { DATA_DIR, getStory } from "./stories";
+import { findUploadedVoiceover, firebaseConfigured, firebaseReachable, uploadVoiceover } from "./firebaseStorage";
+import { getStory } from "./stories";
 import { getNebiusClient, NEBIUS_MODEL } from "./nebius";
 import type { Story, StoryEvent } from "./types";
 
 /**
  * Per-event voice-over: Nebius writes a short neutral narration line, ElevenLabs
- * TTS voices it. Both are cached next to the story data and regenerated only
- * when the event text, model, voice, or speaking rate changes.
+ * TTS voices it. Audio lives only in Firebase Storage — clips are synthesized
+ * in memory and uploaded straight away, and regenerated only when the event
+ * text, model, voice, or speaking rate changes.
  */
 
 const TTS_MODEL = process.env.ELEVENLABS_TTS_MODEL ?? "eleven_multilingual_v2";
@@ -46,36 +45,19 @@ export interface Voiceover {
   audioUrl: string | null;
 }
 
-interface VoiceoverMeta {
-  scriptHash: string;
-  script: string;
-  audioHash: string | null;
-  audioUrl: string | null;
-}
-
+// Concurrent requests for the same clip share one run, so ElevenLabs is
+// never hit twice for the same event at once. The run is forgotten once it
+// settles: the next request re-checks Firebase, which is the cache.
 const inflight = new Map<string, Promise<Voiceover | null>>();
-
-function voiceoverDir(slug: string) {
-  return path.join(DATA_DIR, slug, "voiceover");
-}
 
 function hash(value: unknown): string {
   return crypto.createHash("sha1").update(JSON.stringify(value)).digest("hex").slice(0, 12);
 }
 
-/** The story, only for a slug that is safe in file paths. */
+/** The story, only for a slug that is safe in object paths. */
 async function findStory(slug: string): Promise<Story | null> {
   if (!SLUG_RE.test(slug)) return null;
   return getStory(slug);
-}
-
-/** Resolves the event only if both ids are real, so they're safe in file paths. */
-export async function findEvent(slug: string, eventId: string): Promise<StoryEvent | null> {
-  return (await findStory(slug))?.events.find((e) => e.id === eventId) ?? null;
-}
-
-export function voiceoverAudioPath(slug: string, eventId: string): string {
-  return path.join(voiceoverDir(slug), `${eventId}.mp3`);
 }
 
 export function getVoiceover(slug: string, eventId: string): Promise<Voiceover | null> {
@@ -88,12 +70,11 @@ export function getVoiceover(slug: string, eventId: string): Promise<Voiceover |
   return pending;
 }
 
-/** Removes the story's whole voice-over cache and forgets its in-flight work. */
-export async function deleteVoiceoverCache(slug: string): Promise<void> {
+/** Forgets the story's in-flight work (its remote clips live in Firebase Storage). */
+export function deleteVoiceoverCache(slug: string): void {
   for (const key of inflight.keys()) {
     if (key.startsWith(`${slug}/`)) inflight.delete(key);
   }
-  await fs.rm(voiceoverDir(slug), { recursive: true, force: true });
 }
 
 function monthKey(timestamp: string): string {
@@ -144,25 +125,14 @@ function documentaryScript(story: Story, event: StoryEvent): string | null {
 }
 
 async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover | null> {
-  // The story may live in the graph; only its media cache is on disk.
   const story = await findStory(slug);
   const event = story?.events.find((e) => e.id === eventId);
   if (!story || !event) return null;
   const previous = previousEvent(story.events, eventId);
   const documentary = documentaryScript(story, event);
 
-  const dir = voiceoverDir(slug);
-  await fs.mkdir(dir, { recursive: true });
-  const metaPath = path.join(dir, `${eventId}.json`);
-  const audioPath = voiceoverAudioPath(slug, eventId);
-
-  let meta: VoiceoverMeta | null = null;
-  try {
-    meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
-  } catch {
-    meta = null;
-  }
-
+  // The version key hashes only the event's own text, so a clip uploaded by
+  // another instance — or before a redeploy — is still found.
   const scriptHash = documentary
     ? hash([SCRIPT_VERSION, "documentary", documentary])
     : hash([
@@ -173,43 +143,55 @@ async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover 
       event.location,
       previous ? [previous.id, monthKey(previous.timestamp), placeKey(previous)] : null,
     ]);
-  if (!meta || meta.scriptHash !== scriptHash) {
-    meta = {
-      scriptHash,
-      script: documentary ?? (await writeScript(event, previous)),
-      audioHash: null,
-      audioUrl: null,
-    };
+
+  const firebaseReady = await firebaseConfigured();
+  // Storage is the only audio store: adopt the clip this story already paid
+  // for (its metadata carries the script too) before spending anything.
+  const stored = firebaseReady ? await findUploadedVoiceover(slug, eventId, scriptHash) : null;
+  const script = documentary ?? stored?.script ?? (await writeScriptOrFallback(event, previous));
+  const audioHash = hash([script, TTS_MODEL, TTS_VOICE, TTS_SPEED]);
+
+  if (stored && stored.script === script && stored.audioHash === audioHash) {
+    return { eventId, script, audioVersion: stored.audioHash, audioUrl: stored.audioUrl };
   }
 
-  const audioHash = hash([meta.script, TTS_MODEL, TTS_VOICE, TTS_SPEED]);
-  const audioExists = await fs
-    .access(audioPath)
-    .then(() => true)
-    .catch(() => false);
-  if (meta.audioHash !== audioHash || !audioExists) {
-    const audio = await synthesize(meta.script);
-    if (audio) {
-      await fs.writeFile(audioPath, audio);
-      meta.audioHash = audioHash;
-      // The clip changed, so its download URL must too: the token is the hash.
-      meta.audioUrl = null;
-    } else {
-      meta.audioHash = null;
-      meta.audioUrl = null;
-    }
-  }
-  if (meta.audioHash && !meta.audioUrl) {
-    meta.audioUrl = await uploadVoiceover(slug, eventId, await fs.readFile(audioPath), meta.audioHash);
+  // Nowhere to store a fresh clip — not configured, or the bucket is
+  // unreachable: serve the script only, so TTS credits are never spent on
+  // audio that cannot be kept. The browser fills the gap with its own
+  // speech synthesis.
+  if (!firebaseReady || !(await firebaseReachable())) {
+    return { eventId, script, audioVersion: null, audioUrl: null };
   }
 
-  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2) + "\n");
+  const audio = await synthesize(script);
+  if (!audio) return { eventId, script, audioVersion: null, audioUrl: null };
+  const audioUrl = await uploadVoiceover(slug, eventId, audio, audioHash, script, scriptHash);
   return {
     eventId,
-    script: meta.script,
-    audioVersion: meta.audioHash,
-    audioUrl: meta.audioUrl,
+    script,
+    // A failed upload is also a browser-TTS fallback: no version token means
+    // the client never waits on a URL that would not resolve.
+    audioVersion: audioUrl ? audioHash : null,
+    audioUrl,
   };
+}
+
+/**
+ * The script the browser TTS reads when the audio pipeline has nothing: the
+ * documentary draft when the model wrote one, else the event's own summary
+ * text — anything but a hard failure.
+ */
+export function fallbackScript(event: StoryEvent): string {
+  return event.summary?.trim() || event.title.trim();
+}
+
+async function writeScriptOrFallback(event: StoryEvent, previous: StoryEvent | null): Promise<string> {
+  try {
+    return await writeScript(event, previous);
+  } catch (err) {
+    console.error("Voice-over script failed:", err instanceof Error ? err.message : err);
+    return fallbackScript(event);
+  }
 }
 
 const MAX_FACT_WORDS = 22;
