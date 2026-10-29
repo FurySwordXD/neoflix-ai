@@ -1,7 +1,7 @@
 import { Neo4jContainer, type StartedNeo4jContainer } from "@testcontainers/neo4j";
 import neo4j, { type Driver } from "neo4j-driver";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { fetchTrendRows } from "@/lib/trends";
+import { fetchArticleCoverage, fetchTrendRows } from "@/lib/trends";
 
 let container: StartedNeo4jContainer;
 let driver: Driver;
@@ -73,5 +73,30 @@ describe("fetchTrendRows", () => {
     await seed();
     const rows = await fetchTrendRows(driver, 1);
     expect(rows.map((row) => row.key)).toEqual(["mpox outbreak"]);
+  });
+});
+
+describe("fetchArticleCoverage", () => {
+  it("maps each saved story to the newest article its events cite", async () => {
+    await seed();
+    await driver.executeQuery(`
+      MATCH (s:Story {slug: "mpox-outbreak"})
+      CREATE (e1:Event {key: "mpox-outbreak/e01"}), (e2:Event {key: "mpox-outbreak/e02"})
+      CREATE (s)-[:HAS_EVENT]->(e1), (s)-[:HAS_EVENT]->(e2)
+      CREATE (e1)-[:CITES]->(:Article {url: "https://a.example/1", published: "2026-10-26T00:00:00Z"})
+      CREATE (e2)-[:CITES]->(:Article {url: "https://a.example/2", published: "2026-10-28T00:00:00Z"})
+    `);
+    const coverage = await fetchArticleCoverage(driver);
+    expect(coverage).toEqual({ "mpox-outbreak": Date.parse("2026-10-28T00:00:00Z") });
+  });
+
+  it("skips stub stories and articles with no publish date", async () => {
+    await seed();
+    await driver.executeQuery(`
+      MATCH (stub:Story {slug: "stub-story"})
+      CREATE (stub)-[:HAS_EVENT]->(:Event {key: "stub-story/e01"})
+             -[:CITES]->(:Article {url: "https://b.example/1", published: "2026-10-28T00:00:00Z"})
+    `);
+    expect(await fetchArticleCoverage(driver)).toEqual({});
   });
 });

@@ -10,10 +10,14 @@ import MapSymbolIcon from "./MapSymbolIcon";
 interface MobileEventSheetProps {
   story: Story;
   event: StoryEvent;
+  /** Saved stories, so a related-story card can say whether it opens or maps. */
+  stories: Array<Pick<Story, "slug" | "title" | "status">>;
   /** Which event of how many, for the "3 / 9" readout in the sheet header. */
   index: number;
   total: number;
   expanded: boolean;
+  /** Open a related story: the saved one, or a fresh compile if it is not saved. */
+  onOpenStory?: (slug: string, title: string) => void;
   onExpand: () => void;
   onCollapse: () => void;
   /** Dismiss the event and stop playback — the sheet's close button. */
@@ -30,9 +34,11 @@ interface MobileEventSheetProps {
 export default function MobileEventSheet({
   story,
   event,
+  stories,
   index,
   total,
   expanded,
+  onOpenStory,
   onExpand,
   onCollapse,
   onClose,
@@ -91,7 +97,13 @@ export default function MobileEventSheet({
               />
             </div>
             <div className="flex min-h-0 flex-1">
-              <EventDetail story={story} event={event} onClose={onClose} />
+              <EventDetail
+                story={story}
+                event={event}
+                stories={stories}
+                onOpenStory={onOpenStory}
+                onClose={onClose}
+              />
             </div>
           </>
         ) : (

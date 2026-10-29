@@ -15,7 +15,7 @@ import StoryQueryForm from "./StoryQueryForm";
 import RenderVideoButton from "./RenderVideoButton";
 import { useCanHover } from "./useCanHover";
 import { useIsDesktop } from "./useIsDesktop";
-import { useNarration } from "./useNarration";
+import { useNarration, warmStoryVoiceovers } from "./useNarration";
 
 /** The timeline rail, reused as the desktop column and the mobile drawer. */
 function TimelineView(
@@ -58,6 +58,8 @@ const NARRATION_GAP_MS = 900;
 /** Stable "nothing hovered" value, so the reset below never re-renders. */
 const NO_EDGE = { top: false, left: false, right: false } as const;
 const NARRATION_RATES: Record<number, number> = { 1: 1, 2: 1.2, 4: 1.4 };
+/** Stable "nothing deleted" value, so the stories memo below never re-runs on a fresh default. */
+const EMPTY_REMOVED: string[] = [];
 
 interface StoryMapAppProps {
   story: Story;
@@ -74,6 +76,15 @@ interface StoryMapAppProps {
   /** Shown when an update pass finished and found nothing new. */
   refreshNotice?: string | null;
   onRefresh?: () => void;
+  /** Open a related story: the saved one, or a fresh compile if it is not saved. */
+  onOpenStory?: (slug: string, title: string) => void;
+  /** Dev-only maintenance: delete the saved story, or wipe it and compile it again. */
+  onDeleteStory?: () => void;
+  onRecreateStory?: () => void;
+  /** A delete (or delete-and-recreate) request is in flight. */
+  deleting?: boolean;
+  /** Slugs deleted this session, kept out of the rail until one exists again. */
+  removedSlugs?: string[];
 }
 
 export default function StoryMapApp({
@@ -89,8 +100,18 @@ export default function StoryMapApp({
   refreshError = null,
   refreshNotice = null,
   onRefresh,
+  onOpenStory,
+  onDeleteStory,
+  onRecreateStory,
+  deleting = false,
+  removedSlugs = EMPTY_REMOVED,
 }: StoryMapAppProps) {
   const [stories, setStories] = useState(initialStories);
+  // A just-deleted story vanishes from the rail; it may return once recreated.
+  const visibleStories = useMemo(
+    () => stories.filter((item) => !removedSlugs.includes(item.slug)),
+    [stories, removedSlugs]
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(false);
   const [view, setView] = useState<"interactive" | "immersive">("interactive");
@@ -100,7 +121,8 @@ export default function StoryMapApp({
   // drawer over the map instead of a permanent column.
   const isDesktop = useIsDesktop();
   // Touch screens can't hover, so edge-proximity autohide must not apply there.
-  const canHover = useCanHover();
+  // const canHover = useCanHover();
+  const canHover = false;
   const [timelineOpen, setTimelineOpen] = useState(false);
   // Desktop-only: tucks the rail away on request, leaving a tab to bring it
   // back. Independent of the playback proximity autohide.
@@ -129,20 +151,22 @@ export default function StoryMapApp({
 
   // A story still being mapped (or one that failed) is not saved, so it has no voice-over.
   const unsaved = generating || story.slug === "generating";
-  const [narrationOn, setNarrationOn] = useState(false);
+  const [narrationOn, setNarrationOn] = useState(true);
   const narration = useNarration({
     enabled: narrationOn && !unsaved,
     paused: !autoplay,
     slug: story.slug,
     event: unsaved ? null : selected,
-    nextEvent: unsaved
-      ? null
-      : selectedIndex >= 0
-        ? (events[selectedIndex + 1] ?? null)
-        : (events[0] ?? null),
     // Speech gets faster with playback speed, but stays intelligible.
     rate: NARRATION_RATES[speed] ?? 1,
   });
+  // Opening a story warms every voice-over in one request, so enabling
+  // narration or stepping between events never waits on generation. Re-runs
+  // when refresh adds events; skipped while the story is still unsaved.
+  const eventIds = events.map((event) => event.id).join(",");
+  useEffect(() => {
+    if (!unsaved) warmStoryVoiceovers(story.slug);
+  }, [unsaved, story.slug, eventIds]);
   const narrationFinished =
     narration.status === "done" || narration.status === "error";
 
@@ -332,9 +356,8 @@ export default function StoryMapApp({
           pointer is at the top of the screen. */}
       <header
         aria-hidden={headerHidden}
-        className={`glass z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl px-4 py-3 transition duration-300 ease-out sm:px-5 ${
-          headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
-        }`}
+        className={`glass z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl px-4 py-3 transition duration-300 ease-out sm:px-5 ${headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
+          }`}
       >
         <div className="flex min-w-0 items-center gap-4 lg:max-w-[46%]">
           <a
@@ -344,7 +367,7 @@ export default function StoryMapApp({
           >
             <span className="text-lg">🌍</span>
             <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
-              WorldNews
+              Neoflix
             </span>
           </a>
           <div className="hidden min-w-0 sm:block">
@@ -367,14 +390,36 @@ export default function StoryMapApp({
               {refreshing ? "⟳ Checking…" : "⟳ Latest news"}
             </button>
           )}
+          {/* Dev-only maintenance: wipe the saved story, or wipe and compile it again. */}
+          {!unsaved && onDeleteStory && (
+            <button
+              type="button"
+              onClick={onDeleteStory}
+              disabled={deleting || refreshing}
+              title="Dev only: delete this saved story (with its voice-overs and video)"
+              className="glass-well shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-white/10 hover:text-rose-200 disabled:cursor-wait disabled:opacity-50"
+            >
+              {deleting ? "✕ Deleting…" : "✕ Delete"}
+            </button>
+          )}
+          {!unsaved && onRecreateStory && (
+            <button
+              type="button"
+              onClick={onRecreateStory}
+              disabled={deleting || refreshing}
+              title="Dev only: delete this story and compile it again from scratch"
+              className="glass-well shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-amber-300 transition hover:bg-white/10 hover:text-amber-200 disabled:cursor-wait disabled:opacity-50"
+            >
+              {deleting ? "↻ Recreating…" : "↻ Recreate"}
+            </button>
+          )}
         </div>
       </header>
 
       {generating && steps.length > 0 && (
         <div
-          className={`glass z-30 rounded-xl px-4 py-1.5 transition duration-300 ease-out sm:px-5 ${
-            headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
-          }`}
+          className={`glass z-30 rounded-xl px-4 py-1.5 transition duration-300 ease-out sm:px-5 ${headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
+            }`}
         >
           <div className="flex items-center gap-2 overflow-x-auto text-[11px] whitespace-nowrap">
             <span className="shrink-0 font-semibold uppercase tracking-wide text-sky-400">
@@ -401,9 +446,8 @@ export default function StoryMapApp({
 
       {generationError && (
         <p
-          className={`z-30 rounded-xl border border-red-500/25 bg-red-950/60 px-4 py-2 text-xs text-red-200 shadow-lg backdrop-blur-xl transition duration-300 ease-out sm:px-5 ${
-            headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
-          }`}
+          className={`z-30 rounded-xl border border-red-500/25 bg-red-950/60 px-4 py-2 text-xs text-red-200 shadow-lg backdrop-blur-xl transition duration-300 ease-out sm:px-5 ${headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
+            }`}
         >
           {generationError}
         </p>
@@ -412,9 +456,8 @@ export default function StoryMapApp({
       {/* Update pass over an open story: progress steps, then the outcome */}
       {refreshing && refreshSteps.length > 0 && (
         <div
-          className={`glass z-30 rounded-xl px-4 py-1.5 transition duration-300 ease-out sm:px-5 ${
-            headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
-          }`}
+          className={`glass z-30 rounded-xl px-4 py-1.5 transition duration-300 ease-out sm:px-5 ${headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
+            }`}
         >
           <div className="flex items-center gap-2 overflow-x-auto text-[11px] whitespace-nowrap">
             <span className="shrink-0 font-semibold uppercase tracking-wide text-emerald-400">
@@ -441,9 +484,8 @@ export default function StoryMapApp({
 
       {refreshError && !refreshing && (
         <p
-          className={`z-30 rounded-xl border border-amber-500/25 bg-amber-950/60 px-4 py-2 text-xs text-amber-200 shadow-lg backdrop-blur-xl transition duration-300 ease-out sm:px-5 ${
-            headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
-          }`}
+          className={`z-30 rounded-xl border border-amber-500/25 bg-amber-950/60 px-4 py-2 text-xs text-amber-200 shadow-lg backdrop-blur-xl transition duration-300 ease-out sm:px-5 ${headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
+            }`}
         >
           {refreshError}
         </p>
@@ -451,9 +493,8 @@ export default function StoryMapApp({
 
       {refreshNotice && !refreshing && !refreshError && (
         <p
-          className={`glass z-30 rounded-xl px-4 py-2 text-xs text-slate-300 transition duration-300 ease-out sm:px-5 ${
-            headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
-          }`}
+          className={`glass z-30 rounded-xl px-4 py-2 text-xs text-slate-300 transition duration-300 ease-out sm:px-5 ${headerHidden ? "pointer-events-none -translate-y-[140%] opacity-0" : ""
+            }`}
         >
           {refreshNotice}
         </p>
@@ -512,11 +553,10 @@ export default function StoryMapApp({
                 <div
                   ref={timelineRef}
                   aria-hidden={timelineHidden}
-                  className={`min-h-0 w-[22rem] min-w-[19rem] shrink-0 transition duration-300 ease-out xl:w-[24rem] ${
-                    timelineHidden
-                      ? "pointer-events-none -translate-x-[115%] opacity-0"
-                      : "pointer-events-auto"
-                  }`}
+                  className={`min-h-0 w-[22rem] min-w-[19rem] shrink-0 transition duration-300 ease-out xl:w-[24rem] ${timelineHidden
+                    ? "pointer-events-none -translate-x-[115%] opacity-0"
+                    : "pointer-events-auto"
+                    }`}
                 >
                   <TimelineView
                     story={story}
@@ -537,9 +577,8 @@ export default function StoryMapApp({
             <div className="pointer-events-none relative min-h-0 min-w-0 flex-1">
               <div
                 aria-hidden={headerHidden}
-                className={`glass pointer-events-none absolute left-3 top-3 z-10 max-w-[min(60%,26rem)] rounded-xl px-3 py-2 transition duration-300 ease-out ${
-                  headerHidden ? "-translate-y-[140%] opacity-0" : ""
-                }`}
+                className={`glass pointer-events-none absolute left-3 top-3 z-10 max-w-[min(60%,26rem)] rounded-xl px-3 py-2 transition duration-300 ease-out ${headerHidden ? "-translate-y-[140%] opacity-0" : ""
+                  }`}
               >
                 {selected ? (
                   <>
@@ -581,7 +620,7 @@ export default function StoryMapApp({
                 ) : (
                   <>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                      {stories.length > 1 ? `${stories.length} stories tracked` : "Story tracked"}
+                      {visibleStories.length > 1 ? `${visibleStories.length} stories tracked` : "Story tracked"}
                     </p>
                     <p className="text-[11px] text-slate-400">
                       Pick an event, press ▶ or hit space
@@ -595,9 +634,8 @@ export default function StoryMapApp({
               {!selected && (
                 <div
                   aria-hidden={detailHidden}
-                  className={`glass pointer-events-none absolute right-3 top-3 z-10 hidden rounded-xl px-3 py-2 transition duration-300 ease-out sm:block ${
-                    detailHidden ? "-translate-y-[140%] opacity-0" : ""
-                  }`}
+                  className={`glass pointer-events-none absolute right-3 top-3 z-10 hidden rounded-xl px-3 py-2 transition duration-300 ease-out sm:block ${detailHidden ? "-translate-y-[140%] opacity-0" : ""
+                    }`}
                 >
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                     {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
@@ -625,9 +663,8 @@ export default function StoryMapApp({
                   onClick={() => setTimelineOpen(true)}
                   title="Open the timeline"
                   aria-hidden={timelineOpen}
-                  className={`glass pointer-events-auto absolute left-3 z-20 rounded-full px-3.5 py-2 text-[11px] font-semibold text-slate-200 transition-all duration-300 ease-out hover:text-white ${
-                    selected ? "bottom-[7.5rem]" : "bottom-3"
-                  } ${timelineOpen ? "pointer-events-none scale-90 opacity-0" : ""}`}
+                  className={`glass pointer-events-auto absolute left-3 z-20 rounded-full px-3.5 py-2 text-[11px] font-semibold text-slate-200 transition-all duration-300 ease-out hover:text-white ${selected ? "bottom-[7.5rem]" : "bottom-3"
+                    } ${timelineOpen ? "pointer-events-none scale-90 opacity-0" : ""}`}
                 >
                   ☰ Timeline
                 </button>
@@ -664,13 +701,14 @@ export default function StoryMapApp({
                 <div
                   ref={detailRef}
                   aria-hidden={detailHidden}
-                  className={`pointer-events-auto absolute inset-y-0 right-0 z-20 flex min-h-0 w-[26rem] max-w-[min(26rem,42vw)] flex-col transition duration-300 ease-out ${
-                    detailHidden ? "pointer-events-none translate-x-[108%] opacity-0" : ""
-                  }`}
+                  className={`pointer-events-auto absolute inset-y-0 right-0 z-20 flex min-h-0 w-[26rem] max-w-[min(26rem,42vw)] flex-col transition duration-300 ease-out ${detailHidden ? "pointer-events-none translate-x-[108%] opacity-0" : ""
+                    }`}
                 >
                   <EventDetail
                     story={story}
                     event={selected}
+                    stories={visibleStories}
+                    onOpenStory={onOpenStory}
                     onClose={() => {
                       setAutoplay(false);
                       setSelectedId(null);
@@ -689,9 +727,11 @@ export default function StoryMapApp({
                   key={selected.id}
                   story={story}
                   event={selected}
+                  stories={visibleStories}
                   index={selectedIndex}
                   total={events.length}
                   expanded={sheetOpen}
+                  onOpenStory={onOpenStory}
                   onExpand={() => {
                     setAutoplay(false);
                     setSheetOpen(true);
@@ -718,7 +758,8 @@ export default function StoryMapApp({
             onTogglePlay={togglePlay}
             playDisabled={generating}
             onSpeedChange={setSpeed}
-            onScrubStart={() => setAutoplay(false)}
+            onScrubStart={() => { }}
+            //setAutoplay(false)
             narrationOn={narrationOn}
             narrationStatus={narration.status}
             onToggleNarration={() => setNarrationOn((on) => !on)}

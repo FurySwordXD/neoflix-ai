@@ -13,6 +13,7 @@ interface VoiceoverResponse {
 
 const voiceoverCache = new Map<string, Promise<VoiceoverResponse>>();
 
+/** Fetches one clip, sharing in-flight and settled requests like a warm cache. */
 function fetchVoiceover(slug: string, eventId: string): Promise<VoiceoverResponse> {
   const key = `${slug}/${eventId}`;
   let pending = voiceoverCache.get(key);
@@ -29,14 +30,41 @@ function fetchVoiceover(slug: string, eventId: string): Promise<VoiceoverRespons
   return pending;
 }
 
+/**
+ * Fetches every clip for the story in one request, seeding the per-clip
+ * cache so playback never waits on a per-event round trip. Errors are
+ * swallowed — narration still works per clip on demand.
+ */
+export function warmStoryVoiceovers(slug: string): void {
+  void fetch(`/api/stories/${slug}/voiceover`)
+    .then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Voice-over failed");
+      for (const clip of data.voiceovers as Array<{
+        eventId: string;
+        script: string | null;
+        audioUrl: string | null;
+      }>) {
+        // A null script means that clip failed server-side; leaving it out of
+        // the cache lets the per-event route retry it on demand.
+        if (clip.script) {
+          voiceoverCache.set(
+            `${slug}/${clip.eventId}`,
+            Promise.resolve({ script: clip.script, audioUrl: clip.audioUrl })
+          );
+        }
+      }
+    })
+    .catch(() => {});
+}
+
 interface UseNarrationOptions {
   enabled: boolean;
   /** Story transport is paused. The current clip holds its place and continues on resume. */
   paused: boolean;
   slug: string;
   event: StoryEvent | null;
-  /** Warmed in the background so playback doesn't stall between events. */
-  nextEvent: StoryEvent | null;
+  // Speech gets faster with playback speed, but stays intelligible.
   rate: number;
 }
 
@@ -44,8 +72,7 @@ interface UseNarrationOptions {
  * Loads the focused event's voice-over script whether or not audio is playing.
  * When enabled, plays cached TTS audio, otherwise the browser's speech synthesis.
  */
-export function useNarration({ enabled, paused, slug, event, nextEvent, rate }: UseNarrationOptions) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+export function useNarration({ enabled, paused, slug, event, rate }: UseNarrationOptions) {  const audioRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const clipRef = useRef<VoiceoverResponse | null>(null);
   const speechStartedRef = useRef(false);
@@ -240,10 +267,6 @@ export function useNarration({ enabled, paused, slug, event, nextEvent, rate }: 
       audio.playbackRate = rate;
     }
   }, [rate]);
-
-  useEffect(() => {
-    if (nextEvent && (enabled || event)) fetchVoiceover(slug, nextEvent.id).catch(() => {});
-  }, [enabled, slug, event, nextEvent]);
 
   return { status, script, scriptStatus, progress };
 }

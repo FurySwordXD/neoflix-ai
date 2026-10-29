@@ -136,16 +136,15 @@ export default function PlaybackBar({
             {speed}×
           </button>
           <button
-            className={`${btn} w-auto gap-1 px-2 text-[11px] font-semibold ${
-              narrationOn ? "bg-sky-500/15 text-sky-300 ring-sky-500/50" : ""
-            }`}
+            className={btn}
             onClick={onToggleNarration}
-            title={narrationOn ? "Turn voice-over off" : "Turn voice-over on"}
+            title={narrationOn ? "Mute voice-over" : "Unmute voice-over"}
+            aria-label={narrationOn ? "Mute voice-over" : "Unmute voice-over"}
+            aria-pressed={narrationOn}
           >
             <span className={narrationStatus === "loading" ? "animate-pulse" : ""}>
               {narrationOn ? "🔊" : "🔇"}
             </span>
-            Voice
           </button>
         </div>
 

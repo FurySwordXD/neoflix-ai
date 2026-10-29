@@ -1,5 +1,5 @@
 /**
- * WorldNews core data model.
+ * Neoflix core data model.
  *
  * A Story is a sequence of Events. Every Event is grounded: it has a
  * timestamp, a geo-location, and a list of SourceRefs. Every SourceRef

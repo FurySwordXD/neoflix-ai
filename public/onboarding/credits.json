@@ -1,0 +1,26 @@
+[
+ {
+  "file": "public/onboarding/earth-s-city-lights-by-dmsp-1994.jpg",
+  "media": "image",
+  "ref": "commons:233702",
+  "title": "Earth's City Lights by DMSP, 1994-1995 (large)",
+  "creator": "Data: Marc Imhoff/NASA GSFC, Christopher Elvidge/NOAA NGDC; Image: Craig Mayhew and Robert Simmon/NASA GSFC",
+  "creatorUrl": null,
+  "date": "between 1 October 1994 and 31 March 1995",
+  "license": "public domain",
+  "licenseCode": "pd",
+  "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+  "creditRequired": false,
+  "page": "https://commons.wikimedia.org/wiki/File:Earth%27s_City_Lights_by_DMSP,_1994-1995_(large).jpg",
+  "via": "Wikimedia Commons",
+  "image": "https://upload.wikimedia.org/wikipedia/commons/e/e1/Earth%27s_City_Lights_by_DMSP%2C_1994-1995_%28large%29.jpg",
+  "width": 4800,
+  "height": 2400,
+  "bytes": 4228149,
+  "credit": "\"Earth's City Lights by DMSP, 1994-1995 (large)\" by Data: Marc Imhoff/NASA GSFC, Christopher Elvidge/NOAA NGDC…, public domain, via Wikimedia Commons",
+  "notes": [
+   "Re-encoded from the 4800x2400 original to 4096x2048 for the WebGL globe."
+  ],
+  "saved": "2026-10-29T04:44:00.000Z"
+ }
+]

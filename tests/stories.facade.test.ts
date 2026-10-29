@@ -44,7 +44,7 @@ describe("storeKindFromEnv", () => {
 
 describe("createStoryStore", () => {
   it("builds a file store over the given directory", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "algonews-facade-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neoflix-facade-"));
     try {
       const store = createStoryStore({}, dir);
       await store.saveNewStory(makeStory("alpha"));
@@ -110,7 +110,7 @@ describe("neo4j helpers", () => {
 
 describe("facade delegation", () => {
   it("routes every call to the active store", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "algonews-facade-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neoflix-facade-"));
     try {
       setStoryStore(createFileStore(dir));
       await saveNewStory(makeStory("alpha"));

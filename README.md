@@ -1,8 +1,8 @@
-# 🌍 AlgoNews — Netflix for News, Powered by Agentic AI
+# 🌍 Neoflix — Netflix for News, Powered by Agentic AI
 
 > **You don't scroll through the news anymore. You press play on it.**
 
-**Live demo:** https://algonews-two.vercel.app/
+**Live demo:** https://neoflixai.vercel.app/
 
 Type any topic — *"the 2026 midterms"*, *"COVID-19"*, *"the Apollo 11 moon landing"* — and an agentic AI researches it, compiles a documentary-style timeline of real, sourced events, plays it out on an interactive 3D globe with a broadcast newsreader's voice, and even renders a downloadable 1080p video — all in your browser.
 
@@ -16,7 +16,7 @@ News today is **feed-shaped**. Infinite scroll, reverse chronology, headlines th
 
 Netflix solved this for fiction: instead of listing every episode, it gives you a **series** — a narrative arc with a hook, a spark, a turning point, and a payoff. We asked: **why can't news work the same way?**
 
-So we built **AlgoNews**: the Netflix for news, powered by agentic AI. Every story is a **season** — a timeline of real events in the world. Every event is an **episode** — with a timestamp, a place, a photograph, a voice, and a citation trail. Every source is **rated** — so you can see the political leaning and factual track record of each outlet behind every claim, and weigh the reporting for yourself.
+So we built **Neoflix**: the Netflix for news, powered by agentic AI. Every story is a **season** — a timeline of real events in the world. Every event is an **episode** — with a timestamp, a place, a photograph, a voice, and a citation trail. Every source is **rated** — so you can see the political leaning and factual track record of each outlet behind every claim, and weigh the reporting for yourself.
 
 **News is real. The drama is real. The only thing AI does is organize it.**
 
@@ -38,7 +38,7 @@ Three things collided:
 
 - **The explainer gap.** The best news product of the last decade wasn't an app — it was YouTube video essays and things like Vox's "explained" series. People don't want *more* news; they want *context and closure* for the news they already scrolled past.
 - **Agentic AI finally got good enough** to do genuine multi-step research — search, verify, cite — rather than one-shot hallucination. The tool-use loop, the strict JSON schema, the bias annotations: all of that is only possible now.
-- **A question about trust.** Could an AI tell the news *more* honestly than a feed does? Not by writing its own opinions — but by being relentlessly fact-first, showing the full source list with bias labels, and refusing to invent anything, even a photo. AlgoNews is our answer: summaries stay factual and unopinionated on purpose; drama comes from real stakes and real consequences.
+- **A question about trust.** Could an AI tell the news *more* honestly than a feed does? Not by writing its own opinions — but by being relentlessly fact-first, showing the full source list with bias labels, and refusing to invent anything, even a photo. Neoflix is our answer: summaries stay factual and unopinionated on purpose; drama comes from real stakes and real consequences.
 
 ### How we built it
 

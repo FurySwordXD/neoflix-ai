@@ -37,7 +37,7 @@ function deps(raw: string | Error) {
 }
 
 describe("CATEGORIES", () => {
-  it("are the subjects the static TRENDS list uses", () => {
+  it("are the subjects reader profiles use", () => {
     expect([...CATEGORIES].sort()).toEqual(
       ["climate", "conflict", "economy", "energy", "environment", "health", "politics", "rights", "science", "tech"]
     );

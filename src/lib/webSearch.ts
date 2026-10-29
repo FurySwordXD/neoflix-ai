@@ -171,7 +171,7 @@ async function fetchPageImage(
       signal: AbortSignal.timeout(PAGE_IMAGE_TIMEOUT_MS),
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; WorldNewsBot/1.0; +https://worldnews.local)",
+          "Mozilla/5.0 (compatible; NeoflixBot/1.0; +https://neoflix.local)",
         Accept: "text/html,application/xhtml+xml",
       },
     });

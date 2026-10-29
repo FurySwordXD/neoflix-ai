@@ -8,7 +8,7 @@ import { runStoreContract } from "./contract";
 const tempDirs: string[] = [];
 
 function tempStore() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "algonews-stories-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neoflix-stories-"));
   tempDirs.push(dir);
   return createFileStore(dir);
 }

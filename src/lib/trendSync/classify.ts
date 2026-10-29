@@ -12,7 +12,7 @@ import { HEADLINES_PER_TOPIC, type Candidate } from "./selection";
  * The answer is validated strictly: anything malformed and nothing is stored.
  */
 
-/** The subjects the static TRENDS list and reader profiles use. */
+/** The subjects reader profiles and dashboard trend cards use. */
 export const CATEGORIES: readonly string[] = INTERESTS.map((interest) => interest.id);
 
 export interface Classification {

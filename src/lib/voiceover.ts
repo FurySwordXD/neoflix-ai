@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import { uploadVoiceover } from "./firebaseStorage";
 import { DATA_DIR, getStory } from "./stories";
 import { getNebiusClient, NEBIUS_MODEL } from "./nebius";
 import type { Story, StoryEvent } from "./types";
@@ -41,12 +42,15 @@ export interface Voiceover {
   script: string;
   /** Changes whenever the audio is regenerated; null if no audio exists. */
   audioVersion: string | null;
+  /** Public Firebase Storage download URL; null when not uploaded. */
+  audioUrl: string | null;
 }
 
 interface VoiceoverMeta {
   scriptHash: string;
   script: string;
   audioHash: string | null;
+  audioUrl: string | null;
 }
 
 const inflight = new Map<string, Promise<Voiceover | null>>();
@@ -82,6 +86,14 @@ export function getVoiceover(slug: string, eventId: string): Promise<Voiceover |
     inflight.set(key, pending);
   }
   return pending;
+}
+
+/** Removes the story's whole voice-over cache and forgets its in-flight work. */
+export async function deleteVoiceoverCache(slug: string): Promise<void> {
+  for (const key of inflight.keys()) {
+    if (key.startsWith(`${slug}/`)) inflight.delete(key);
+  }
+  await fs.rm(voiceoverDir(slug), { recursive: true, force: true });
 }
 
 function monthKey(timestamp: string): string {
@@ -154,18 +166,19 @@ async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover 
   const scriptHash = documentary
     ? hash([SCRIPT_VERSION, "documentary", documentary])
     : hash([
-        SCRIPT_VERSION,
-        event.title,
-        event.summary,
-        event.timestamp,
-        event.location,
-        previous ? [previous.id, monthKey(previous.timestamp), placeKey(previous)] : null,
-      ]);
+      SCRIPT_VERSION,
+      event.title,
+      event.summary,
+      event.timestamp,
+      event.location,
+      previous ? [previous.id, monthKey(previous.timestamp), placeKey(previous)] : null,
+    ]);
   if (!meta || meta.scriptHash !== scriptHash) {
     meta = {
       scriptHash,
       script: documentary ?? (await writeScript(event, previous)),
       audioHash: null,
+      audioUrl: null,
     };
   }
 
@@ -179,13 +192,24 @@ async function buildVoiceover(slug: string, eventId: string): Promise<Voiceover 
     if (audio) {
       await fs.writeFile(audioPath, audio);
       meta.audioHash = audioHash;
+      // The clip changed, so its download URL must too: the token is the hash.
+      meta.audioUrl = null;
     } else {
       meta.audioHash = null;
+      meta.audioUrl = null;
     }
+  }
+  if (meta.audioHash && !meta.audioUrl) {
+    meta.audioUrl = await uploadVoiceover(slug, eventId, await fs.readFile(audioPath), meta.audioHash);
   }
 
   await fs.writeFile(metaPath, JSON.stringify(meta, null, 2) + "\n");
-  return { eventId, script: meta.script, audioVersion: meta.audioHash };
+  return {
+    eventId,
+    script: meta.script,
+    audioVersion: meta.audioHash,
+    audioUrl: meta.audioUrl,
+  };
 }
 
 const MAX_FACT_WORDS = 22;
@@ -232,7 +256,7 @@ Summary: ${event.summary}`,
           { role: "assistant" as const, content: tooLong },
           {
             role: "user" as const,
-              content: `That is ${wordCount(tooLong)} words. Rewrite it in at most ${MAX_FACT_WORDS - 4} words, keeping only the single most important fact. Do not mention the date or the place.`,
+            content: `That is ${wordCount(tooLong)} words. Rewrite it in at most ${MAX_FACT_WORDS - 4} words, keeping only the single most important fact. Do not mention the date or the place.`,
           },
         ]
         : []),
@@ -248,20 +272,54 @@ Summary: ${event.summary}`,
   return script;
 }
 
+// ElevenLabs rate-limits concurrent synthesis, so every TTS call in this
+// process waits its turn on one queue, no matter which route started it.
+let ttsQueue: Promise<unknown> = Promise.resolve();
+
+/** Runs the task after every previously enqueued TTS task settles. */
+function enqueueTts<T>(task: () => Promise<T>): Promise<T> {
+  const run = ttsQueue.then(task, task);
+  ttsQueue = run.catch(() => {});
+  return run;
+}
+
+/** Waits out a rate-limit pause between TTS attempts. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const TTS_ATTEMPTS = 4;
+const TTS_FIRST_RETRY_MS = 2_000;
+
 async function synthesize(script: string): Promise<Buffer | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) return null;
-  try {
-    const elevenlabs = new ElevenLabsClient({ apiKey });
-    const stored = await elevenlabs.voices.settings.get(TTS_VOICE);
-    const audio = await elevenlabs.textToSpeech.convert(TTS_VOICE, {
-      text: script,
-      modelId: TTS_MODEL,
-      voiceSettings: { ...stored, speed: TTS_SPEED },
-    });
-    return Buffer.from(await new Response(audio).arrayBuffer());
-  } catch (err) {
-    console.error("Voice-over TTS failed:", err instanceof Error ? err.message : err);
+  return enqueueTts(async () => {
+    let waitMs = TTS_FIRST_RETRY_MS;
+    for (let attempt = 1; attempt <= TTS_ATTEMPTS; attempt++) {
+      try {
+        const elevenlabs = new ElevenLabsClient({ apiKey });
+        const stored = await elevenlabs.voices.settings.get(TTS_VOICE);
+        const audio = await elevenlabs.textToSpeech.convert(TTS_VOICE, {
+          text: script,
+          modelId: TTS_MODEL,
+          voiceSettings: { ...stored, speed: TTS_SPEED },
+        });
+        return Buffer.from(await new Response(audio).arrayBuffer());
+      } catch (err) {
+        const rateLimited =
+          err instanceof Error && "statusCode" in err && (err as { statusCode?: number }).statusCode === 429;
+        // Last attempt, or a non-429 failure: give up and fall back to
+        // browser speech synthesis rather than blocking the batch.
+        if (attempt === TTS_ATTEMPTS || !rateLimited) {
+          console.error("Voice-over TTS failed:", err instanceof Error ? err.message : err);
+          return null;
+        }
+        console.error(`Voice-over TTS rate-limited; retry ${attempt}/${TTS_ATTEMPTS - 1} in ${waitMs / 1000}s`);
+        await sleep(waitMs);
+        waitMs *= 2;
+      }
+    }
     return null;
-  }
+  });
 }

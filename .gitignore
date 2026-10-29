@@ -7,5 +7,6 @@ out/
 next-env.d.ts
 .DS_Store
 src/data
+service-account.json
 public/remotion/
 coverage/

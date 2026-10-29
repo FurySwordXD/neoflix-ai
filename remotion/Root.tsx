@@ -25,7 +25,7 @@ const calculateLandscape: CalculateMetadataFunction<StoryVideoProps> = async ({ 
     fps: FPS,
     ...LANDSCAPE,
     props: { slug: props.slug, manifest },
-    defaultOutName: `worldnews-${props.slug}`,
+    defaultOutName: `neoflix-${props.slug}`,
   };
 };
 
@@ -42,7 +42,7 @@ const calculatePortrait: CalculateMetadataFunction<StoryVideoProps> = async ({ p
     fps: FPS,
     ...PORTRAIT,
     props: { slug: props.slug, manifest },
-    defaultOutName: `worldnews-${props.slug}-vertical`,
+    defaultOutName: `neoflix-${props.slug}-vertical`,
   };
 };
 

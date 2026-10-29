@@ -21,8 +21,8 @@ const SCHEMA_STATEMENTS = [
 ];
 
 const cache = globalThis as unknown as {
-  __algonewsNeo4jDriver?: Driver;
-  __algonewsNeo4jSchema?: WeakMap<Driver, Promise<void>>;
+  __neoflixNeo4jDriver?: Driver;
+  __neoflixNeo4jSchema?: WeakMap<Driver, Promise<void>>;
 };
 
 /** Reads NEO4J_URI, NEO4J_USER (default "neo4j"), NEO4J_PASSWORD and NEO4J_DATABASE. */
@@ -46,25 +46,25 @@ export function neo4jConfigFromEnv(env: Env = process.env): Neo4jConfig {
 
 /** The process-wide driver. The first call's config wins until `closeDriver()`. */
 export function getDriver(config: Neo4jConfig = neo4jConfigFromEnv()): Driver {
-  if (!cache.__algonewsNeo4jDriver) {
-    cache.__algonewsNeo4jDriver = neo4j.driver(
+  if (!cache.__neoflixNeo4jDriver) {
+    cache.__neoflixNeo4jDriver = neo4j.driver(
       config.uri,
       neo4j.auth.basic(config.user, config.password),
       { disableLosslessIntegers: true }
     );
   }
-  return cache.__algonewsNeo4jDriver;
+  return cache.__neoflixNeo4jDriver;
 }
 
 export async function closeDriver(): Promise<void> {
-  const driver = cache.__algonewsNeo4jDriver;
-  cache.__algonewsNeo4jDriver = undefined;
+  const driver = cache.__neoflixNeo4jDriver;
+  cache.__neoflixNeo4jDriver = undefined;
   await driver?.close();
 }
 
 /** Creates the Story.slug and Event.key unique constraints, once per driver. */
 export function ensureSchema(driver: Driver, database?: string): Promise<void> {
-  const done = (cache.__algonewsNeo4jSchema ??= new WeakMap());
+  const done = (cache.__neoflixNeo4jSchema ??= new WeakMap());
   let pending = done.get(driver);
   if (!pending) {
     pending = applySchema(driver, database).catch((err: unknown) => {

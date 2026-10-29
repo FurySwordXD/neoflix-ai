@@ -7,7 +7,7 @@ import { ALL_FORMATS, BufferSource, Input } from "mediabunny";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.join(root, "src/data/stories");
 const publicDir = path.join(root, "public/remotion");
-const apiUrl = (process.env.ALGONEWS_API_URL || "http://localhost:3000").replace(/\/+$/, "");
+const apiUrl = (process.env.NEOFLIX_API_URL || "http://localhost:3000").replace(/\/+$/, "");
 const API_TIMEOUT_MS = 10_000;
 
 const FPS = 30;
@@ -95,7 +95,7 @@ async function loadOneStory(slug) {
   return story;
 }
 
-async function mp3Seconds(filePath) {
+async function audioDurationSeconds(filePath) {
   const bytes = fs.readFileSync(filePath);
   const input = new Input({
     formats: ALL_FORMATS,
@@ -131,7 +131,8 @@ async function stageStory(story) {
   const dest = path.join(publicDir, slug);
   fs.mkdirSync(dest, { recursive: true });
   for (const file of fs.readdirSync(dest)) {
-    if (file.endsWith(".mp3")) fs.rmSync(path.join(dest, file), { force: true });
+    // Clear stale audio from older runs (wav era) and current mp3 caches.
+    if (/\.(mp3|wav)$/.test(file)) fs.rmSync(path.join(dest, file), { force: true });
   }
 
   let cursor = TITLE_FRAMES;
@@ -149,7 +150,7 @@ async function stageStory(story) {
     if (fs.existsSync(audioSrc)) {
       fs.copyFileSync(audioSrc, path.join(dest, `${event.id}.mp3`));
       audio = `remotion/${slug}/${event.id}.mp3`;
-      audioSeconds = await mp3Seconds(audioSrc);
+      audioSeconds = await audioDurationSeconds(audioSrc);
     }
 
     const audioFrames = audioSeconds ? Math.ceil(audioSeconds * FPS) : 0;

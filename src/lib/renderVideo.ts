@@ -23,13 +23,13 @@ interface InternalJob extends VideoJob {
 }
 
 const globalJobs = globalThis as unknown as {
-  __worldnewsVideoJobs?: Map<string, InternalJob>;
+  __neoflixVideoJobs?: Map<string, InternalJob>;
 };
-const jobs = globalJobs.__worldnewsVideoJobs ?? new Map<string, InternalJob>();
-globalJobs.__worldnewsVideoJobs = jobs;
+const jobs = globalJobs.__neoflixVideoJobs ?? new Map<string, InternalJob>();
+globalJobs.__neoflixVideoJobs = jobs;
 
 function apiBaseUrl(): string {
-  return process.env.ALGONEWS_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+  return process.env.NEOFLIX_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
 export function videoOutputPath(slug: string): string {
@@ -83,6 +83,33 @@ function noteProgress(job: InternalJob, line: string) {
   }
 }
 
+/**
+ * Stops an in-flight render of the story and forgets its job. Any finished
+ * artifact is removed by the caller, so a deleted story never leaves a
+ * downloadable video behind.
+ */
+export function cancelVideoRender(slug: string): void {
+  const job = jobs.get(slug);
+  if (!job) return;
+  jobs.delete(slug);
+  const child = job.child;
+  job.child = undefined;
+  job.status = "error";
+  job.phase = null;
+  job.error = "Story deleted while rendering";
+  if (child) child.kill();
+}
+
+/** Deletes the story's rendered video, if one exists. Returns true when a file went away. */
+export function deleteVideoArtifact(slug: string): boolean {
+  try {
+    fs.rmSync(videoOutputPath(slug), { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function startVideoRender(slug: string): Promise<{
   job: VideoJob;
   httpStatus: number;
@@ -133,7 +160,7 @@ export async function startVideoRender(slug: string): Promise<{
   const child = spawn(process.execPath, ["remotion/cli.mjs", "render", slug], {
     cwd: process.cwd(),
     // The CLI loads stories through this server's API, wherever they are stored.
-    env: { ...process.env, ALGONEWS_API_URL: apiBaseUrl() },
+    env: { ...process.env, NEOFLIX_API_URL: apiBaseUrl() },
     stdio: ["ignore", "pipe", "pipe"],
   });
   job.child = child;

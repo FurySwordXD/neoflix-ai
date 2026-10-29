@@ -1,6 +1,5 @@
-import { Audio } from "@remotion/media";
 import { useState } from "react";
-import { AbsoluteFill, Easing, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Audio, Easing, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
 import type { VideoImage } from "./types";
 import { motionCaption } from "../src/lib/mapMotion";
 import { CATEGORY_COLORS, CATEGORY_LABELS, LEAN_COLORS, formatMagnitude } from "../src/lib/ui";
@@ -205,7 +204,7 @@ function Header({ title, showStory, layout }: { title: string; showStory: boolea
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 22 }}>🌍</span>
         <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.28em", color: "#e2e8f0" }}>
-          WORLDNEWS
+          NEOFLIX
         </span>
       </div>
       {showStory ? (

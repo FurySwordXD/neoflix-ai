@@ -33,10 +33,10 @@ RETURN l.holder AS holder
 
 const RELEASE = "MATCH (l:GenerationLock {key: $key, holder: $holder}) DELETE l";
 
-const schemaCache = globalThis as unknown as { __algonewsLockSchema?: WeakMap<Driver, Promise<void>> };
+const schemaCache = globalThis as unknown as { __neoflixLockSchema?: WeakMap<Driver, Promise<void>> };
 
 function ensureLockSchema({ driver, database }: GraphConnection): Promise<void> {
-  const done = (schemaCache.__algonewsLockSchema ??= new WeakMap());
+  const done = (schemaCache.__neoflixLockSchema ??= new WeakMap());
   let pending = done.get(driver);
   if (!pending) {
     pending = driver

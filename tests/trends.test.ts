@@ -1,13 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Driver } from "neo4j-driver";
 import {
   FRESHNESS_WINDOW_MS,
+  fetchArticleCoverage,
   freshnessAt,
+  loadDashboardTrends,
   loadGraphTrends,
   parseTrendRow,
+  savedStoryTrends,
   toTrendItems,
   type GraphTrendRow,
 } from "@/lib/trends";
+import { resetStoryStore, setStoryStore } from "@/lib/stories";
+import { createFileStore } from "@/lib/storyStore/fileStore";
+import { makeStory } from "./storyStore/fixtures";
+import type { Story } from "@/lib/types";
 import { regionsForGeos } from "@/lib/trendRegions";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
@@ -229,5 +239,253 @@ describe("loadGraphTrends", () => {
     expect(result).toEqual([]);
     expect(executeQuery).not.toHaveBeenCalled();
     error.mockRestore();
+  });
+});
+
+afterEach(() => {
+  resetStoryStore();
+});
+
+describe("savedStoryTrends", () => {
+  it("stages each saved story as a card, freshest first", () => {
+    const items = savedStoryTrends(
+      [
+        {
+          ...makeStory("older"),
+          createdAt: new Date(NOW - 48 * HOUR).toISOString(),
+          refreshedAt: new Date(NOW - 48 * HOUR).toISOString(),
+        },
+        {
+          ...makeStory("newer"),
+          createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+          refreshedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        },
+      ],
+      NOW
+    );
+    expect(items.map((item) => item.id)).toEqual(["story:newer", "story:older"]);
+    const [newer, older] = items;
+    expect(newer).toMatchObject({
+      title: "Story newer",
+      blurb: "A description",
+      slug: "newer",
+      query: "Story newer",
+      ongoing: true,
+    });
+    expect(newer.freshness).toBeCloseTo(1 - 2 / 72);
+    expect(older.freshness).toBeCloseTo(1 - 48 / 72);
+    expect(newer.heat).toBe(0);
+  });
+
+  it("sorts stories with unknown recency last and falls back to title order", () => {
+    const items = savedStoryTrends(
+      [makeStory("beta", { createdAt: undefined, refreshedAt: undefined }), makeStory("alpha")],
+      NOW
+    );
+    expect(items.map((item) => item.id)).toEqual(["story:alpha", "story:beta"]);
+  });
+
+  it("marks concluded stories and drops storyless blanks", () => {
+    const items = savedStoryTrends(
+      [makeStory("done", { status: "concluded" }), makeStory("blank", { description: "", subtitle: "" })],
+      NOW
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0].ongoing).toBe(false);
+  });
+
+  it("ranks by the newest cited article when coverage is known", () => {
+    const items = savedStoryTrends(
+      [
+        {
+          ...makeStory("stale-refresh"),
+          createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+          refreshedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        },
+        {
+          ...makeStory("hot-coverage"),
+          createdAt: new Date(NOW - 48 * HOUR).toISOString(),
+          refreshedAt: new Date(NOW - 48 * HOUR).toISOString(),
+        },
+      ],
+      NOW,
+      // hot-coverage's sources ran an hour ago; stale-refresh cites week-old news.
+      {
+        "hot-coverage": NOW - HOUR,
+        "stale-refresh": NOW - 24 * HOUR,
+      }
+    );
+    expect(items.map((item) => item.id)).toEqual(["story:hot-coverage", "story:stale-refresh"]);
+    expect(items[0].freshness).toBeCloseTo(1 - 1 / 72);
+    expect(items[1].freshness).toBeCloseTo(1 - 24 / 72);
+  });
+
+  it("ignores coverage entries that are not finite times", () => {
+    const items = savedStoryTrends(
+      [
+        {
+          ...makeStory("covered"),
+          createdAt: new Date(NOW - 60 * HOUR).toISOString(),
+          refreshedAt: new Date(NOW - 60 * HOUR).toISOString(),
+        },
+        {
+          ...makeStory("uncovered"),
+          createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+          refreshedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        },
+      ],
+      NOW,
+      { covered: Number.NaN }
+    );
+    // covered falls back to its refresh stamp; uncovered stays fresher.
+    expect(items.map((item) => item.id)).toEqual(["story:uncovered", "story:covered"]);
+  });
+});
+
+describe("loadDashboardTrends", () => {
+  const neo4jEnv = { STORY_STORE: "neo4j", NEO4J_URI: "bolt://x", NEO4J_PASSWORD: "p" };
+
+  function fakeDriver(executeQuery: (...args: unknown[]) => Promise<unknown>): Driver {
+    return { executeQuery } as unknown as Driver;
+  }
+
+  /** A file store over a temp dir, holding the given stories. */
+  function fileStoreWith(stories: Story[]) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neoflix-trends-"));
+    const store = createFileStore(dir);
+    for (const story of stories) store.saveNewStory(story);
+    setStoryStore(store);
+    return () => fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  it("puts graph topics first and the saved-story shelf behind them", async () => {
+    const cleanup = fileStoreWith([
+      makeStory("shelf-story", {
+        createdAt: new Date(NOW - HOUR).toISOString(),
+        refreshedAt: new Date(NOW - HOUR).toISOString(),
+      }),
+    ]);
+    try {
+      const records = [{ toObject: () => row() }];
+      const executeQuery = vi.fn().mockResolvedValue({ records });
+      const items = await loadDashboardTrends(20, {
+        env: neo4jEnv,
+        driver: fakeDriver(executeQuery),
+        now: NOW,
+      });
+      expect(items.map((item) => item.id)).toEqual(["graph:mpox outbreak", "story:shelf-story"]);
+      expect(items[0].freshness).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("hides a saved story its graph topic already covers", async () => {
+    const cleanup = fileStoreWith([
+      makeStory("mpox-outbreak", {
+        title: "The mpox outbreak",
+        createdAt: new Date(NOW - HOUR).toISOString(),
+        refreshedAt: new Date(NOW - HOUR).toISOString(),
+      }),
+    ]);
+    try {
+      const records = [
+        { toObject: () => row({ slug: "mpox-outbreak", storyTitle: "The mpox outbreak", query: "the 2026 mpox outbreak" }) },
+      ];
+      const executeQuery = vi.fn().mockResolvedValue({ records });
+      const items = await loadDashboardTrends(20, {
+        env: neo4jEnv,
+        driver: fakeDriver(executeQuery),
+        now: NOW,
+      });
+      expect(items.map((item) => item.id)).toEqual(["graph:mpox outbreak"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("shows only the saved-story shelf when the graph is empty", async () => {
+    const cleanup = fileStoreWith([
+      makeStory("only-saved", {
+        createdAt: new Date(NOW - HOUR).toISOString(),
+        refreshedAt: new Date(NOW - HOUR).toISOString(),
+      }),
+    ]);
+    try {
+      const executeQuery = vi.fn().mockResolvedValue({ records: [] });
+      const items = await loadDashboardTrends(20, {
+        env: neo4jEnv,
+        driver: fakeDriver(executeQuery),
+        now: NOW,
+      });
+      expect(items.map((item) => item.id)).toEqual(["story:only-saved"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("returns [] when the db has nothing at all", async () => {
+    const cleanup = fileStoreWith([]);
+    try {
+      const executeQuery = vi.fn().mockResolvedValue({ records: [] });
+      const items = await loadDashboardTrends(20, {
+        env: neo4jEnv,
+        driver: fakeDriver(executeQuery),
+        now: NOW,
+      });
+      expect(items).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ranks the shelf by the newest article its story cites", async () => {
+    const cleanup = fileStoreWith([
+      makeStory("refreshed-but-old-news", {
+        createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+        refreshedAt: new Date(NOW - 2 * HOUR).toISOString(),
+      }),
+      makeStory("in-the-news", {
+        createdAt: new Date(NOW - 48 * HOUR).toISOString(),
+        refreshedAt: new Date(NOW - 48 * HOUR).toISOString(),
+      }),
+    ]);
+    try {
+      // The trends query comes back empty; the coverage query answers.
+      const executeQuery = vi.fn().mockImplementation((query: string) =>
+        Promise.resolve(
+          query.includes("CITES")
+            ? { records: [{ toObject: () => ({ slug: "in-the-news", latestArticle: new Date(NOW - HOUR).toISOString() }) }] }
+            : { records: [] }
+        )
+      );
+      const items = await loadDashboardTrends(20, {
+        env: neo4jEnv,
+        driver: fakeDriver(executeQuery),
+        now: NOW,
+      });
+      expect(items.map((item) => item.id)).toEqual(["story:in-the-news", "story:refreshed-but-old-news"]);
+      expect(items[0].freshness).toBeCloseTo(1 - 1 / 72);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("fetchArticleCoverage", () => {
+  function fakeDriver(records: unknown[]): Driver {
+    return { executeQuery: vi.fn().mockResolvedValue({ records }) } as unknown as Driver;
+  }
+
+  it("maps slug to the latest cited article, skipping malformed rows", async () => {
+    const coverage = await fetchArticleCoverage(
+      fakeDriver([
+        { toObject: () => ({ slug: "gaza-war", latestArticle: "2026-10-26T12:30:00.000Z" }) },
+        { toObject: () => ({ slug: "bad-time", latestArticle: "not a date" }) },
+        { toObject: () => ({ slug: null, latestArticle: "2026-10-26T12:30:00.000Z" }) },
+        { toObject: () => ({ slug: "blank", latestArticle: "  " }) },
+      ])
+    );
+    expect(coverage).toEqual({ "gaza-war": Date.parse("2026-10-26T12:30:00.000Z") });
   });
 });

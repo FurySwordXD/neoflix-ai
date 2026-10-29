@@ -12,11 +12,15 @@ export async function GET(
     if (!voiceover) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
+    // Prefer the public Firebase download URL; fall back to the local proxy.
+    const audioUrl =
+      voiceover.audioUrl ??
+      (voiceover.audioVersion
+        ? `/api/stories/${slug}/events/${eventId}/voiceover/audio?v=${voiceover.audioVersion}`
+        : null);
     return NextResponse.json({
       script: voiceover.script,
-      audioUrl: voiceover.audioVersion
-        ? `/api/stories/${slug}/events/${eventId}/voiceover/audio?v=${voiceover.audioVersion}`
-        : null,
+      audioUrl,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Voice-over failed";

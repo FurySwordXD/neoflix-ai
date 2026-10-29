@@ -1,4 +1,5 @@
 import type { GeneratedEvent, Story, StoryEvent } from "@/lib/types";
+import type { StoryMeta } from "@/lib/storyStore/types";
 
 export function makeEvent(id: string, timestamp: string, overrides: Partial<StoryEvent> = {}): StoryEvent {
   return {
@@ -23,7 +24,11 @@ export function makeEvent(id: string, timestamp: string, overrides: Partial<Stor
   };
 }
 
-export function makeStory(slug: string, overrides: Partial<Story> = {}): Story {
+/** Store-only timestamps (createdAt, refreshedAt) tests may also set. */
+export function makeStory(
+  slug: string,
+  overrides: Partial<Story> & Partial<Pick<StoryMeta, "createdAt" | "refreshedAt">> = {}
+): Story {
   return {
     slug,
     title: `Story ${slug}`,

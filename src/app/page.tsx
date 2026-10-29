@@ -1,6 +1,6 @@
 import AppShell from "@/components/AppShell";
 import { getStory, listStories, listStoryMetas } from "@/lib/stories";
-import { loadGraphTrends } from "@/lib/trends";
+import { loadDashboardTrends } from "@/lib/trends";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export default async function Home({
     requested ? getStory(requested) : null,
     listStories(),
     listStoryMetas(),
-    loadGraphTrends(),
+    loadDashboardTrends(),
   ]);
   return (
     <AppShell initialStory={story} stories={stories} metas={metas} trends={trends} />

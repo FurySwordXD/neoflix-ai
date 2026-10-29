@@ -127,7 +127,7 @@ export async function isDecodableImage(url: string): Promise<boolean> {
       signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; WorldNewsBot/1.0; +https://worldnews.local)",
+          "Mozilla/5.0 (compatible; NeoflixBot/1.0; +https://neoflix.local)",
         Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
         // Some CDNs gate hotlinks on the referer; the image's own origin is the
         // closest thing to the context it was published in.

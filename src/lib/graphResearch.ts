@@ -100,7 +100,7 @@ MERGE (a)-[:PUBLISHED_BY]->(s)
 const LUCENE_SPECIAL = /([+\-!(){}[\]^"~*?:\\/&|])/g;
 
 const indexCache = globalThis as unknown as {
-  __algonewsResearchIndexes?: WeakMap<Driver, Promise<void>>;
+  __neoflixResearchIndexes?: WeakMap<Driver, Promise<void>>;
 };
 
 const emptyResponse = (): WebSearchResponse => ({ results: [], images: [] });
@@ -185,7 +185,7 @@ function graphConnection(opts: GraphResearchOptions): GraphConnection | null {
 }
 
 function ensureFulltextIndexes({ driver, database }: GraphConnection): Promise<void> {
-  const done = (indexCache.__algonewsResearchIndexes ??= new WeakMap());
+  const done = (indexCache.__neoflixResearchIndexes ??= new WeakMap());
   let pending = done.get(driver);
   if (!pending) {
     pending = (async () => {

@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findExistingStory } from "@/lib/storyMatch";
 import type { StoryMeta } from "@/lib/stories";
 import {
   INTERESTS,
   REGIONS,
-  TRENDS,
   recommend,
   type TrendItem,
 } from "@/lib/recommend";
 import { useReaderProfile, withOpen } from "@/lib/profile";
 import StoryQueryForm from "./StoryQueryForm";
+import LandingHero from "./LandingHero";
+import GlobeCanvas, { type GlobeTargets } from "./GlobeCanvas";
 
 interface DashboardProps {
   metas: StoryMeta[];
-  /** Graph trends from the server; the static TRENDS list is used when empty. */
+  /** Topics from the db: trending graph topics plus the saved-story shelf. */
   trends?: TrendItem[];
   onGenerate: (query: string, topics?: string[]) => void;
 }
@@ -40,43 +41,31 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
   const [profile, update] = useReaderProfile();
   const [ready, setReady] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [step, setStep] = useState(0);
+  const [landingDraft, setLandingDraft] = useState<Draft>({ interests: [], regions: [] });
+  /** The planet idles behind the dashboard, blurred and dimmed. */
+  const dashTargets = useRef<GlobeTargets>({ x: 0, y: 0.45, dim: 0.45 });
 
   useEffect(() => {
     setReady(true);
   }, []);
 
-  const showPicker = ready && (!profile.onboarded || editing);
+  /** First-run and "Update interests" both show the landing room. */
+  const showLanding = ready && (!profile.onboarded || editing);
   const ranked = useMemo(
-    () => recommend(trends && trends.length > 0 ? trends : TRENDS, profile, 9),
+    () => recommend(trends ?? [], profile, 9),
     [trends, profile]
   );
-
-  useEffect(() => {
-    if (showPicker && !draft) {
-      setDraft({ interests: [...profile.interests], regions: [...profile.regions] });
-    }
-  }, [showPicker, draft, profile.interests, profile.regions]);
 
   function go(slug: string, topics: string[]) {
     update((current) => withOpen(current, topics));
     router.push(`/?story=${encodeURIComponent(slug)}`);
   }
 
-  function finishPicker() {
-    const picks = draft ?? { interests: profile.interests, regions: profile.regions };
-    update((current) => ({
-      ...current,
-      interests: picks.interests,
-      regions: picks.regions,
-      onboarded: true,
-    }));
-    setEditing(false);
-    setDraft(null);
-  }
-
   function openPicker() {
-    setDraft({ interests: [...profile.interests], regions: [...profile.regions] });
+    // Reopen the original onboarding room with the current picks staged.
+    setLandingDraft({ interests: [...profile.interests], regions: [...profile.regions] });
+    setStep(1);
     setEditing(true);
   }
 
@@ -98,122 +87,60 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
   const tuned = interestLabels.length > 0 || regionLabels.length > 0;
 
   if (!ready) {
-    return <div className="h-screen" />;
+    return <div className="h-dvh" />;
   }
 
-  if (showPicker) {
-    const picks = draft ?? { interests: profile.interests, regions: profile.regions };
+  if (showLanding) {
     return (
-      <div className="scroll-slim flex h-dvh flex-col overflow-y-auto">
-        <div className="glass mx-auto mt-3 w-[calc(100%-1.5rem)] max-w-3xl rounded-2xl px-5 py-4">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🌍</span>
-            <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
-              WorldNews
-            </span>
-          </div>
-        </div>
-        <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-5 py-10">
-          <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            What should we map for you?
-          </h1>
-          <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-400">
-            Choose the subjects and places you care about. This stays in this browser, and you can
-            change it later.
-          </p>
-
-          <h2 className="mt-8 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Subjects
-          </h2>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {INTERESTS.map((interest) => {
-              const pressed = picks.interests.includes(interest.id);
-              return (
-                <button
-                  key={interest.id}
-                  type="button"
-                  aria-pressed={pressed}
-                  title={interest.blurb}
-                  onClick={() =>
-                    setDraft({
-                      interests: toggle(picks.interests, interest.id),
-                      regions: picks.regions,
-                    })
-                  }
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                    pressed
-                      ? "bg-sky-500/25 text-sky-100 ring-1 ring-sky-400/60"
-                      : "glass-well text-slate-300 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {interest.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <h2 className="mt-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Regions
-          </h2>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {REGIONS.map((region) => {
-              const pressed = picks.regions.includes(region.id);
-              return (
-                <button
-                  key={region.id}
-                  type="button"
-                  aria-pressed={pressed}
-                  onClick={() =>
-                    setDraft({
-                      interests: picks.interests,
-                      regions: toggle(picks.regions, region.id),
-                    })
-                  }
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                    pressed
-                      ? "bg-violet-500/25 text-violet-100 ring-1 ring-violet-400/60"
-                      : "glass-well text-slate-300 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {region.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-8 flex items-center gap-4">
-            <button
-              type="button"
-              onClick={finishPicker}
-              className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500"
-            >
-              {editing ? "Save interests" : "Continue"}
-            </button>
-            {editing && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing(false);
-                  setDraft(null);
-                }}
-                className="text-xs text-slate-500 hover:text-slate-300"
-              >
-                Cancel
-              </button>
-            )}
-          </div>
-        </main>
-      </div>
+      <LandingHero
+        step={step}
+        interests={landingDraft.interests}
+        regions={landingDraft.regions}
+        onToggleInterest={(id) =>
+          setLandingDraft((d) => ({ ...d, interests: toggle(d.interests, id) }))
+        }
+        onToggleRegion={(id) => setLandingDraft((d) => ({ ...d, regions: toggle(d.regions, id) }))}
+        onAdvance={() => setStep(Math.min(1, step + 1))}
+        onBack={() => setStep(Math.max(0, step - 1))}
+        onSkip={() => setStep(1)}
+        onFinish={() => {
+          update((current) => ({
+            ...current,
+            interests: landingDraft.interests,
+            regions: landingDraft.regions,
+            onboarded: true,
+          }));
+          setStep(0);
+          setEditing(false);
+        }}
+        onCancel={
+          editing
+            ? () => {
+                setEditing(false);
+                setStep(0);
+              }
+            : undefined
+        }
+      />
     );
   }
 
   return (
-    <div className="scroll-slim h-dvh overflow-y-auto">
+    <>
+      {/* The planet stays in the room, softened behind the reading surface. */}
+      <div aria-hidden="true" className="fixed inset-0 z-0 overflow-hidden">
+        <div className="h-full w-full scale-110" style={{ filter: "blur(8px)" }}>
+          <GlobeCanvas targets={dashTargets} />
+        </div>
+        <div className="absolute inset-0 bg-slate-950/40" />
+      </div>
+
+      <div className="scroll-slim relative z-10 h-dvh overflow-y-auto">
       <div className="glass mx-auto mt-3 flex w-[calc(100%-1.5rem)] max-w-6xl items-center justify-between gap-3 rounded-2xl px-5 py-4">
         <div className="flex items-center gap-2">
           <span className="text-lg">🌍</span>
           <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
-            WorldNews
+            Neoflix
           </span>
         </div>
         <button
@@ -239,6 +166,13 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
           )}
 
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {ranked.length === 0 && (
+              <p className="glass rounded-2xl p-4 text-xs leading-relaxed text-slate-400">
+                Nothing is trending on the map yet — the sync worker picks up
+                story-worthy topics as they trend. Search for any topic above
+                and it becomes a story.
+              </p>
+            )}
             {ranked.map(({ item, reasons }) => {
               const readyCard = savedSlug(item, metas);
               const shown = readyCard ? ["Ready on your map", ...reasons].slice(0, 2) : reasons;
@@ -281,6 +215,7 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
           </div>
         </section>
       </main>
-    </div>
+      </div>
+    </>
   );
 }

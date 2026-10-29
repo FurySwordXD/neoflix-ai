@@ -34,8 +34,13 @@ export interface StoryStore {
    * optional meta patch. Returns the reloaded story. Throws if it is not saved.
    */
   appendStoryEvents(slug: string, events: StoryEvent[], patch?: StoryPatch): Promise<Story>;
-  /** Persist one generated event under the next `g###` id. Throws if the story is not saved. */
+  /** Persist one generated event under the next `g###` id. Throws if it is not saved. */
   saveGeneratedEvent(slug: string, generated: GeneratedEvent): Promise<StoryEvent>;
   /** Remember a query that resolved to this story so the same ask opens it next time. */
   rememberQuery(slug: string, query: string): Promise<void>;
+  /**
+   * Remove a saved story and all its events. A missing slug is a silent no-op,
+   * so deletes stay idempotent. Media caches are the caller's concern.
+   */
+  deleteStory(slug: string): Promise<void>;
 }

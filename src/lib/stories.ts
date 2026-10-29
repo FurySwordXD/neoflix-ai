@@ -30,22 +30,22 @@ export function createStoryStore(env: Env = process.env, dataDir: string = DATA_
   return createNeo4jStore({ driver: getDriver(config), database: config.database });
 }
 
-const cache = globalThis as unknown as { __algonewsStoryStore?: StoryStore };
+const cache = globalThis as unknown as { __neoflixStoryStore?: StoryStore };
 
 /** The process-wide store, built on first use. */
 export function getStoryStore(): StoryStore {
-  cache.__algonewsStoryStore ??= createStoryStore();
-  return cache.__algonewsStoryStore;
+  cache.__neoflixStoryStore ??= createStoryStore();
+  return cache.__neoflixStoryStore;
 }
 
 /** Use this store for every call from now on (tests, scripts with a fake or temp store). */
 export function setStoryStore(store: StoryStore): void {
-  cache.__algonewsStoryStore = store;
+  cache.__neoflixStoryStore = store;
 }
 
 /** Drop the cached store so the next call reads the env again. */
 export function resetStoryStore(): void {
-  cache.__algonewsStoryStore = undefined;
+  cache.__neoflixStoryStore = undefined;
 }
 
 export function listStoryMetas(): Promise<StoryMeta[]> {
@@ -81,4 +81,9 @@ export function saveGeneratedEvent(slug: string, generated: GeneratedEvent): Pro
 /** Remember a query that resolved to this story so the same ask opens it next time. */
 export function rememberQuery(slug: string, query: string): Promise<void> {
   return getStoryStore().rememberQuery(slug, query);
+}
+
+/** Remove a saved story and its events. A missing slug is a silent no-op. */
+export function deleteStory(slug: string): Promise<void> {
+  return getStoryStore().deleteStory(slug);
 }

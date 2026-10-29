@@ -227,5 +227,48 @@ export function runStoreContract(name: string, harness: () => ContractHarness): 
       expect((await store.listStoryMetas()).map((m) => m.slug).sort()).toEqual(["alpha", "beta"]);
       expect(await store.getStory("alpha")).toEqual(await source.getStory("alpha"));
     });
+
+    it("deletes a story so every read forgets it", async () => {
+      await store.saveNewStory(makeStory("alpha"));
+      await store.deleteStory("alpha");
+
+      expect(await store.getStory("alpha")).toBeNull();
+      expect(await store.listStoryMetas()).toEqual([]);
+      expect(await store.listStories()).toEqual([]);
+    });
+
+    it("deletes only the story asked for", async () => {
+      await store.saveNewStory(makeStory("alpha"));
+      await store.saveNewStory(makeStory("beta"));
+      await store.deleteStory("alpha");
+
+      expect((await store.listStoryMetas()).map((m) => m.slug)).toEqual(["beta"]);
+    });
+
+    it("treats deleting a missing story as a no-op", async () => {
+      await expect(store.deleteStory("missing")).resolves.toBeUndefined();
+    });
+
+    it("lets a deleted slug be saved again from scratch", async () => {
+      await store.saveNewStory(makeStory("alpha"));
+      await store.deleteStory("alpha");
+      const again = makeStory("alpha", { title: "Rebuilt alpha", hook: undefined, queries: undefined });
+
+      await expect(store.saveNewStory(again)).resolves.toEqual(again);
+      const loaded = await store.getStory("alpha");
+      expect(loaded?.title).toBe("Rebuilt alpha");
+      expect(loaded?.queries).toBeUndefined();
+    });
+
+    it("deleting a story does not remove an article another story still cites", async () => {
+      await store.saveNewStory(makeStory("alpha"));
+      await store.saveNewStory(makeStory("beta"));
+      await store.deleteStory("alpha");
+
+      // Both fixtures cite the same Reuters URL shape per event id, so beta's
+      // read-back proves shared source data survived alpha's delete.
+      const beta = await store.getStory("beta");
+      expect(beta?.events[0].sources[0].url).toBe("https://www.reuters.com/world/e01");
+    });
   });
 }

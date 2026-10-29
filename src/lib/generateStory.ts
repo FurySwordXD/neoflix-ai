@@ -159,7 +159,7 @@ IMAGES — every event should carry the photograph that shows it, so the story r
 - Prefer the image from the article you already cite as a source for that event: set "sourceUrl" to that article's URL so the reader can see it in context.
 - "caption": one short line, at most 12 words, on what the image shows — and it must be sourced, not guessed. Use the "(alt: …)" text the result published for that image, tightened to fit; when the alt text says nothing useful, caption it from the event's own documented facts, never from the image URL or filename. Never describe detail you cannot see in the source text (no "map showing…", no "crowd of thousands") unless a source says so.
 - Spread the images across the arc: do not give every event the same photo, and never reuse one image twice in a story.
-- relatedStories: 0 to 3 adjacent real stories, title and one-line relation only.`;
+- relatedStories: 2 to 3 adjacent real stories that the record itself connects to this one (a shared conflict, treaty, market, or investigation). Each is just a title and one-line relation; the app opens or researches them on demand. Prefer stories with their own documented event chains; never pad with loose lookalikes.`;
 
 interface RawSource {
   publisher?: unknown;

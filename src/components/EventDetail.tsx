@@ -24,13 +24,27 @@ interface Citation {
   sources: Array<Pick<SourceRef, "id" | "publisher" | "title" | "url" | "bias">>;
 }
 
+/** Light same-title check for the card label; full matching lives in AppShell. */
+function isSaved(slug: string, title: string, stories: Array<Pick<Story, "slug" | "title">>): boolean {
+  if (stories.some((item) => item.slug === slug)) return true;
+  const normalize = (value: string) =>
+    value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const wanted = normalize(title);
+  if (!wanted) return false;
+  return stories.some((item) => normalize(item.title) === wanted);
+}
+
 interface EventDetailProps {
   story: Story;
   event: StoryEvent;
+  /** Saved stories, so a related-story card can say whether it opens or maps. */
+  stories: Array<Pick<Story, "slug" | "title" | "status">>;
+  /** Open a related story: the saved one, or a fresh compile if it is not saved. */
+  onOpenStory?: (slug: string, title: string) => void;
   onClose: () => void;
 }
 
-export default function EventDetail({ story, event, onClose }: EventDetailProps) {
+export default function EventDetail({ story, event, stories, onOpenStory, onClose }: EventDetailProps) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -183,6 +197,49 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
           </ul>
         </section>
 
+        {/* Related stories — the graph edges, opened or compiled on demand.
+            Above the ask box: the whole shelf stays visible without a long
+            scroll, so the links read as part of the story, not a footnote. */}
+        {story.relatedStories.length > 0 && (
+          <section>
+            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Linked stories
+            </h3>
+            <ul className="space-y-2">
+              {story.relatedStories.map((rel) => {
+                const ready = isSaved(rel.slug, rel.title, stories);
+                return (
+                  <li key={rel.slug}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenStory?.(rel.slug, rel.title)}
+                      disabled={!onOpenStory}
+                      title={ready ? `Open “${rel.title}”` : `Research “${rel.title}” and build its story`}
+                      className="glass-row group flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-400/5 disabled:cursor-default"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-medium text-slate-200 group-hover:text-white">
+                          {rel.title}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-500">
+                          {rel.relation}
+                        </span>
+                      </span>
+                      <span
+                        className={`mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-wide transition ${
+                          ready ? "text-slate-500 group-hover:text-sky-300" : "text-violet-300/80 group-hover:text-violet-300"
+                        }`}
+                      >
+                        {ready ? "open ▸" : "map ▸"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
         {/* Grounded Q&A — Nebius at runtime */}
         <section>
           <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -249,30 +306,6 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
             </div>
           )}
         </section>
-
-        {/* Related stories — the graph edges */}
-        {story.relatedStories.length > 0 && (
-          <section>
-            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Linked stories
-            </h3>
-            <ul className="space-y-2">
-              {story.relatedStories.map((rel) => (
-                <li key={rel.slug} className="glass-row rounded-xl border-dashed p-3">
-                  <div className="text-[13px] font-medium text-slate-300">
-                    {rel.title}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-slate-500">
-                    {rel.relation}
-                  </div>
-                  <div className="mt-1 text-[10px] uppercase tracking-wide text-slate-600">
-                    coming to the map soon
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
       </div>
     </aside>
   );

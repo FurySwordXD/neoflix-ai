@@ -83,6 +83,21 @@ UNWIND $related AS r
 MERGE (t:Story {slug: r.slug})
 CREATE (s)-[:RELATED_STORY {relation: r.relation, title: r.title, order: r.order}]->(t)`;
 
+/** Every property a save or refresh can set; nulling them blanks the Story node back into a stub. */
+const BLANK_STORY_PROPS = {
+  title: null,
+  subtitle: null,
+  description: null,
+  status: null,
+  startAt: null,
+  endAt: null,
+  hook: null,
+  epilogue: null,
+  queries: null,
+  createdAt: null,
+  refreshedAt: null,
+};
+
 export function createNeo4jStore({ driver, database }: Neo4jStoreOptions): StoryStore {
   async function run<T>(
     mode: "READ" | "WRITE",
@@ -209,6 +224,28 @@ export function createNeo4jStore({ driver, database }: Neo4jStoreOptions): Story
     });
   }
 
+  /**
+   * Removes a story's properties, events and outgoing related-story edges.
+   * The Story node itself stays as a stub — other stories' RELATED_STORY
+   * edges may point at it, and a later save re-merges onto it — and shared
+   * Article/Source nodes are left for the other stories and news-scraper.
+   */
+  async function deleteStory(slug: string): Promise<void> {
+    await run("WRITE", async (tx) => {
+      await tx.run(
+        `MATCH (s:Story {slug: $slug})
+         OPTIONAL MATCH (s)-[rel:RELATED_STORY]->()
+         DELETE rel
+         WITH DISTINCT s
+         OPTIONAL MATCH (s)-[:HAS_EVENT]->(e:Event)
+         DETACH DELETE e
+         WITH DISTINCT s
+         SET s += $reset`,
+        { slug, reset: BLANK_STORY_PROPS }
+      );
+    });
+  }
+
   return {
     listStoryMetas: () => run("READ", (tx) => readMetas(tx, null)),
     listStories: async () => (await run("READ", (tx) => readMetas(tx, null))).map(toListItem),
@@ -217,6 +254,7 @@ export function createNeo4jStore({ driver, database }: Neo4jStoreOptions): Story
     appendStoryEvents,
     saveGeneratedEvent,
     rememberQuery,
+    deleteStory,
   };
 }
 

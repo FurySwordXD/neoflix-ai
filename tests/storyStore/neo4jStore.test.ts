@@ -39,7 +39,7 @@ runStoreContract("neo4j", () => ({
     return createNeo4jStore({ driver });
   },
   freshSource: async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "algonews-import-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neoflix-import-"));
     tempDirs.push(dir);
     return createFileStore(dir);
   },
@@ -126,5 +126,72 @@ describe("neo4jStore graph shape", () => {
     await store.appendStoryEvents("alpha", []);
     const after = (await store.listStoryMetas())[0].refreshedAt;
     expect(after && before && after > before).toBe(true);
+  });
+
+  it("deleteStory leaves a bare stub and keeps shared articles and incoming related-story edges", async () => {
+    await wipe();
+    const store = createNeo4jStore({ driver });
+    await store.saveNewStory(makeStory("alpha"));
+    await store.saveNewStory(makeStory("beta"));
+    // gamma points at alpha, so alpha gains an incoming RELATED_STORY edge
+    // that a delete must not touch (only outgoing ones go).
+    await store.saveNewStory(
+      makeStory("gamma", {
+        relatedStories: [{ slug: "alpha", title: "Story alpha", relation: "Came before it." }],
+      })
+    );
+
+    await store.deleteStory("alpha");
+
+    // The Story node survives as a stub: slug only, no save properties.
+    const { records: storyRecords } = await driver.executeQuery(
+      'MATCH (s:Story {slug: "alpha"}) RETURN properties(s) AS props'
+    );
+    expect(storyRecords).toHaveLength(1);
+    const props = storyRecords[0].get("props") as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(["slug"]);
+
+    // Its events and outgoing RELATED_STORY edges are gone.
+    const { records: eventRecords } = await driver.executeQuery(
+      'MATCH (:Story {slug: "alpha"})-[:HAS_EVENT]->(e) RETURN count(e) AS count'
+    );
+    expect(eventRecords[0].get("count")).toBe(0);
+    const { records: relRecords } = await driver.executeQuery(
+      'MATCH (:Story {slug: "alpha"})-[r:RELATED_STORY]->() RETURN count(r) AS count'
+    );
+    expect(relRecords[0].get("count")).toBe(0);
+
+    // The story that pointed at alpha keeps its RELATED_STORY edge.
+    const { records: incoming } = await driver.executeQuery(
+      'MATCH (:Story {slug: "gamma"})-[:RELATED_STORY]->(:Story {slug: "alpha"}) RETURN count(*) AS count'
+    );
+    expect(incoming[0].get("count")).toBe(1);
+
+    // Shared Article and Source nodes survive the delete.
+    const { records: articles } = await driver.executeQuery(
+      'MATCH (a:Article {url: "https://www.reuters.com/world/e01"})-[:PUBLISHED_BY]->(:Source) RETURN count(a) AS count'
+    );
+    expect(articles[0].get("count")).toBe(1);
+
+    // The remaining stories are untouched, and alpha is forgotten by every read.
+    expect(await store.getStory("alpha")).toBeNull();
+    expect((await store.listStoryMetas()).map((m) => m.slug)).toEqual(["beta", "gamma"]);
+    const beta = await store.getStory("beta");
+    expect(beta?.events[0].sources[0].url).toBe("https://www.reuters.com/world/e01");
+  });
+
+  it("a deleted-then-resent story refills the same stub node", async () => {
+    await wipe();
+    const store = createNeo4jStore({ driver });
+    await store.saveNewStory(makeStory("alpha"));
+    await store.deleteStory("alpha");
+
+    const rebuilt = makeStory("alpha", { title: "Rebuilt alpha", hook: undefined, queries: undefined });
+    await store.saveNewStory(rebuilt);
+    const { events, ...meta } = rebuilt;
+    expect(await store.getStory("alpha")).toEqual({
+      ...meta,
+      events: [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp)),
+    });
   });
 });

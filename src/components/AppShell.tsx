@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Dashboard from "@/components/Dashboard";
 import StoryMapApp from "@/components/StoryMapApp";
 import { readStoryRefresh, readStoryStream } from "@/lib/readStoryStream";
 import { useReaderProfile, withOpen } from "@/lib/profile";
-import { topicsForSlug, type TrendItem } from "@/lib/recommend";
+import type { TrendItem } from "@/lib/recommend";
+import { findExistingStory } from "@/lib/storyMatch";
 import type { StoryMeta } from "@/lib/stories";
 import type { Story, StoryEvent } from "@/lib/types";
 import type { StoryStreamMeta } from "@/lib/storyStream";
@@ -13,11 +15,14 @@ import type { StoryStreamMeta } from "@/lib/storyStream";
 /** How long a just-added event stays put when the next one arrives immediately. */
 const REVEAL_GAP_MS = 450;
 
+/** Story deletion (and its recreate shortcut) never ships: it is a dev tool. */
+const DEV_TOOLS = process.env.NODE_ENV !== "production";
+
 interface AppShellProps {
   initialStory: Story | null;
   stories: Array<Pick<Story, "slug" | "title" | "status">>;
   metas: StoryMeta[];
-  /** Live graph trends; empty means the dashboard uses the static list. */
+  /** Topics from the db: trending graph topics plus the saved-story shelf. */
   trends?: TrendItem[];
 }
 
@@ -92,15 +97,22 @@ export default function AppShell({ initialStory, stories, metas, trends }: AppSh
       : { mode: "browse" }
   );
   const [, updateProfile] = useReaderProfile();
+  const router = useRouter();
   const live = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
   const topicsRef = useRef<string[] | null>(null);
   const initialSlug = initialStory?.slug ?? "";
+  const metasRef = useRef(metas);
+  metasRef.current = metas;
   const [refreshing, setRefreshing] = useState(false);
   const [refresh, setRefresh] = useState<RefreshState | null>(null);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  // Dev-only delete/recreate in flight; buttons disable while it runs.
+  const [deleting, setDeleting] = useState(false);
+  // Slugs deleted this session; the rail filters them out until one exists again.
+  const [removedSlugs, setRemovedSlugs] = useState<string[]>([]);
 
   useEffect(() => {
     if (live.current) return;
@@ -193,9 +205,10 @@ export default function AppShell({ initialStory, stories, metas, trends }: AppSh
             await pauseForReveal();
             if (controller.signal.aborted || generationRef.current !== id) return;
             live.current = false;
-            const picked = topicsRef.current ?? topicsForSlug(next.slug);
-            updateProfile((current) => withOpen(current, picked));
+            updateProfile((current) => withOpen(current, topicsRef.current ?? []));
             window.history.replaceState(null, "", `/?story=${encodeURIComponent(next.slug)}`);
+            // A recreate may land on the slug it just deleted; stop hiding it.
+            setRemovedSlugs((current) => current.filter((item) => item !== next.slug));
             setPhase({
               mode: "story",
               story: next,
@@ -218,6 +231,22 @@ export default function AppShell({ initialStory, stories, metas, trends }: AppSh
         );
       }
     })();
+  }
+
+  // A related story card: open the saved one, or research it live. Saved can
+  // mean the exact stub slug, or a different slug whose title matches — the
+  // model slugs a related story from its own title, which may drift from
+  // the slug the real story lands under.
+  function openRelated(slug: string, title: string) {
+    if (phase.mode === "story" && phase.generating) return;
+    const metas = metasRef.current;
+    const exact = metas.some((meta) => meta.slug === slug) ? slug : null;
+    const target = exact ?? findExistingStory(title, metas)?.slug ?? null;
+    if (target) {
+      router.push(`/?story=${encodeURIComponent(target)}`);
+      return;
+    }
+    begin(title);
   }
 
   // Pull the latest news into the open story. New events stream in like a
@@ -276,6 +305,53 @@ export default function AppShell({ initialStory, stories, metas, trends }: AppSh
     })();
   }
 
+  // Dev-only: DELETE the saved story, then either reopen the dashboard or
+  // re-run the founding query so a fresh compile takes the story's place.
+  function deleteStory() {
+    void requestDelete(null);
+  }
+
+  // Recreate: delete, then re-run the story's most recent query. The fresh
+  // compile may land on a different slug if the new title drifts.
+  function recreateStory() {
+    if (phase.mode !== "story") return;
+    const query = phase.story.queries?.[phase.story.queries.length - 1];
+    if (!query) {
+      deleteStory();
+      return;
+    }
+    void requestDelete(query);
+  }
+
+  /** DELETEs the saved story; with a query it immediately generates a replacement. */
+  async function requestDelete(recreateQuery: string | null) {
+    if (phase.mode !== "story" || phase.generating || deleting) return;
+    const slug = phase.story.slug;
+    if (slug === "generating") return;
+    // An in-flight update pass over a story that is about to vanish is dead weight.
+    refreshAbortRef.current?.abort();
+    setRefreshing(false);
+    setRefresh(null);
+    setRefreshNotice(null);
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
+        throw new Error(
+          typeof data?.error === "string" && data.error ? data.error : "Could not delete that story"
+        );
+      }
+      setRemovedSlugs((current) => (current.includes(slug) ? current : [...current, slug]));
+      setDeleting(false);
+      if (recreateQuery) begin(recreateQuery);
+      else router.push("/");
+    } catch (err) {
+      setDeleting(false);
+      console.error(err instanceof Error ? err.message : err);
+    }
+  }
+
   if (phase.mode === "browse") {
     return <Dashboard metas={metas} trends={trends} onGenerate={begin} />;
   }
@@ -294,6 +370,11 @@ export default function AppShell({ initialStory, stories, metas, trends }: AppSh
       refreshError={refresh?.error ?? null}
       refreshNotice={refreshNotice}
       onRefresh={refreshStory}
+      onOpenStory={openRelated}
+      onDeleteStory={DEV_TOOLS ? deleteStory : undefined}
+      onRecreateStory={DEV_TOOLS ? recreateStory : undefined}
+      deleting={deleting}
+      removedSlugs={removedSlugs}
     />
   );
 }

@@ -1,5 +1,5 @@
 {
-  "name": "worldnews",
+  "name": "neoflix",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,12 +12,14 @@
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
     "graph:import": "tsx scripts/import-stories.ts",
-    "sync:trends": "tsx scripts/sync-trends.ts"
+    "sync:trends": "tsx scripts/sync-trends.ts",
+    "backfill:related": "tsx scripts/backfill-related-stories.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.74.0",
     "@remotion/player": "^4.0.539",
     "@remotion/web-renderer": "4.0.539",
+    "firebase-admin": "^14.5.0",
     "neo4j-driver": "^6.2.0",
     "next": "^16.4.3",
     "openai": "^7.45.1",

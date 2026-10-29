@@ -121,6 +121,13 @@ export function createFileStore(dataDir: string): StoryStore {
     if (queries) writeMeta(slug, { ...meta, queries });
   }
 
+  /** The whole story directory goes: meta, events and the voice-over cache. */
+  function deleteStory(slug: string): void {
+    // Destructive, so refuse anything that could reach outside the data dir.
+    if (!slug || slug.includes("/") || slug.includes("\\") || slug.includes("..")) return;
+    fs.rmSync(path.join(dataDir, slug), { recursive: true, force: true });
+  }
+
   return {
     listStoryMetas: async () => listMetas(),
     listStories: async () => listMetas().map(toListItem),
@@ -129,6 +136,7 @@ export function createFileStore(dataDir: string): StoryStore {
     appendStoryEvents: async (slug, events, patch) => appendStoryEvents(slug, events, patch),
     saveGeneratedEvent: async (slug, generated) => saveGeneratedEvent(slug, generated),
     rememberQuery: async (slug, query) => rememberQuery(slug, query),
+    deleteStory: async (slug) => deleteStory(slug),
   };
 }
 
