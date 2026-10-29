@@ -8,6 +8,7 @@ import { EarthScene } from "./EarthScene";
 import { captionPages, activeCaptionPage } from "./captions";
 import { formatLongDate, formatRange } from "./format";
 import { aimAt, lerpAngle } from "./geo";
+import { useVideoLayout, type VideoLayout } from "./videoLayout";
 import type { VideoEvent, VideoManifest } from "./types";
 
 // A type alias (not an interface): Remotion's Composition requires props to
@@ -87,6 +88,7 @@ function activeEvent(frame: number, events: VideoEvent[], endStart: number): Vid
 }
 
 export function StoryVideo({ manifest }: StoryVideoProps) {
+  const layout = useVideoLayout();
   const frame = useCurrentFrame();
   if (!manifest || manifest.events.length === 0) {
     return (
@@ -133,6 +135,7 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
         shift={shift}
         illustrateId={event?.id ?? null}
         motionFrame={event ? Math.max(0, frame - event.from) : 0}
+        layout={layout}
       />
       <AbsoluteFill
         style={{
@@ -142,14 +145,14 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
         }}
       />
 
-      <Header title={manifest.title} showStory={frame >= titleFrames && frame < endStart} />
+      <Header title={manifest.title} showStory={frame >= titleFrames && frame < endStart} layout={layout} />
 
       {titleOpacity > 0.01 ? (
-        <TitleCard manifest={manifest} opacity={titleOpacity} />
+        <TitleCard manifest={manifest} opacity={titleOpacity} layout={layout} />
       ) : null}
 
       {event && panelOpacity > 0.01 ? (
-        <EventPanel event={event} index={activeIndex} total={events.length} opacity={panelOpacity} />
+        <EventPanel event={event} index={activeIndex} total={events.length} opacity={panelOpacity} layout={layout} />
       ) : null}
 
       {event?.script && panelOpacity > 0.01 ? (
@@ -158,14 +161,15 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
           elapsed={frame - event.from}
           durationInFrames={event.durationInFrames}
           opacity={panelOpacity}
+          layout={layout}
         />
       ) : null}
 
       {frame >= titleFrames && frame < endStart ? (
-        <Timeline events={events} frame={frame} endStart={endStart} />
+        <Timeline events={events} frame={frame} endStart={endStart} layout={layout} />
       ) : null}
 
-      {endOpacity > 0.01 ? <EndCard manifest={manifest} opacity={endOpacity} /> : null}
+      {endOpacity > 0.01 ? <EndCard manifest={manifest} opacity={endOpacity} layout={layout} /> : null}
 
       {events.map((item) =>
         item.audio ? (
@@ -183,14 +187,15 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
   );
 }
 
-function Header({ title, showStory }: { title: string; showStory: boolean }) {
+function Header({ title, showStory, layout }: { title: string; showStory: boolean; layout: VideoLayout }) {
+  const portrait = layout.portrait;
   return (
     <div
       style={{
         position: "absolute",
-        top: 28,
-        left: 40,
-        right: 40,
+        top: portrait ? 26 : 28,
+        left: portrait ? 28 : 40,
+        right: portrait ? 28 : 40,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -206,7 +211,7 @@ function Header({ title, showStory }: { title: string; showStory: boolean }) {
       {showStory ? (
         <div
           style={{
-            maxWidth: 760,
+            maxWidth: portrait ? 560 : 760,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -221,7 +226,8 @@ function Header({ title, showStory }: { title: string; showStory: boolean }) {
   );
 }
 
-function TitleCard({ manifest, opacity }: { manifest: VideoManifest; opacity: number }) {
+function TitleCard({ manifest, opacity, layout }: { manifest: VideoManifest; opacity: number; layout: VideoLayout }) {
+  const portrait = layout.portrait;
   return (
     <div style={{ position: "absolute", inset: 0, opacity }}>
       <div
@@ -230,19 +236,26 @@ function TitleCard({ manifest, opacity }: { manifest: VideoManifest; opacity: nu
           left: 0,
           right: 0,
           bottom: 0,
-          height: 460,
+          height: portrait ? 660 : 460,
           background: "linear-gradient(to top, rgba(5,8,16,0.96) 18%, rgba(5,8,16,0) 100%)",
         }}
       />
-      <div style={{ position: "absolute", left: 72, right: 72, bottom: 78 }}>
+      <div
+        style={{
+          position: "absolute",
+          left: portrait ? 56 : 72,
+          right: portrait ? 56 : 72,
+          bottom: portrait ? 96 : 78,
+        }}
+      >
         <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.32em", color: "#7dd3fc" }}>
           A SOURCED STORY
         </div>
         <h1
           style={{
             margin: "14px 0 0",
-            maxWidth: 1180,
-            fontSize: 62,
+            maxWidth: portrait ? undefined : 1180,
+            fontSize: portrait ? 52 : 62,
             lineHeight: 1.05,
             fontWeight: 700,
             color: "white",
@@ -250,7 +263,15 @@ function TitleCard({ manifest, opacity }: { manifest: VideoManifest; opacity: nu
         >
           {manifest.title}
         </h1>
-        <p style={{ margin: "16px 0 0", maxWidth: 860, fontSize: 24, lineHeight: 1.35, color: "#cbd5e1" }}>
+        <p
+          style={{
+            margin: "16px 0 0",
+            maxWidth: portrait ? undefined : 860,
+            fontSize: 24,
+            lineHeight: 1.35,
+            color: "#cbd5e1",
+          }}
+        >
           {manifest.hook ?? manifest.subtitle}
         </p>
         <p style={{ margin: "14px 0 0", fontSize: 16, color: "#94a3b8" }}>
@@ -268,115 +289,151 @@ function EventPanel({
   index,
   total,
   opacity,
+  layout,
 }: {
   event: VideoEvent;
   index: number;
   total: number;
   opacity: number;
+  layout: VideoLayout;
 }) {
   const color = CATEGORY_COLORS[event.category];
   // Manifests staged before images existed are still on disk, so stay defensive.
   const photo = event.images?.[0];
+  const portrait = layout.portrait;
   return (
     <div
       style={{
+        // Landscape: a right-hand column. Portrait: a bottom sheet the globe
+        // stays visible above.
+        ...(portrait
+          ? {
+            left: 0,
+            right: 0,
+            bottom: 75,
+            background:
+              "linear-gradient(to top, rgba(5,8,16,0.99) 55%, rgba(5,8,16,0.94) 78%, rgba(5,8,16,0.6) 92%, rgba(5,8,16,0) 100%)",
+            // Leave the bottom band clear: the caption and timeline ride
+            // over the sheet's lower edge, so content stops above them.
+            padding: "44px 52px 128px",
+          }
+          : {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 700,
+            background:
+              "linear-gradient(to right, rgba(5,8,16,0) 0%, rgba(5,8,16,0.72) 16%, rgba(5,8,16,0.94) 38%)",
+            padding: "108px 64px 130px 120px",
+          }),
         position: "absolute",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 700,
         opacity,
-        background:
-          "linear-gradient(to right, rgba(5,8,16,0) 0%, rgba(5,8,16,0.72) 16%, rgba(5,8,16,0.94) 38%)",
-        padding: "108px 64px 130px 120px",
         display: "flex",
-        flexDirection: "column",
+        flexDirection: portrait ? "row" : "column",
+        gap: portrait ? 36 : 0,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span
+      {/* Portrait: photo left, text right — so the sheet reads dense instead
+          of a wall of small text over dead space. Without a photo the text
+          takes the full width so nothing is left blank. */}
+      {portrait && photo ? (
+        <div style={{ width: 400, flexShrink: 0, display: "flex", flexDirection: "column" }}>
+          <EventPhoto image={photo} tall={false} />
+        </div>
+      ) : null}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span
+            style={{
+              borderRadius: 4,
+              padding: "3px 8px",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color,
+              backgroundColor: `${color}22`,
+              border: `1px solid ${color}66`,
+            }}
+          >
+            {CATEGORY_LABELS[event.category]}
+          </span>
+          <span style={{ fontSize: 13, color: "#64748b", fontVariantNumeric: "tabular-nums" }}>
+            {index + 1} / {total}
+          </span>
+        </div>
+        <h2
           style={{
-            borderRadius: 4,
-            padding: "3px 8px",
-            fontSize: 12,
+            margin: "16px 0 0",
+            fontSize: 40,
+            lineHeight: 1.12,
             fontWeight: 700,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color,
-            backgroundColor: `${color}22`,
-            border: `1px solid ${color}66`,
+            color: "white",
           }}
         >
-          {CATEGORY_LABELS[event.category]}
-        </span>
-        <span style={{ fontSize: 13, color: "#64748b", fontVariantNumeric: "tabular-nums" }}>
-          {index + 1} / {total}
-        </span>
-      </div>
-      <h2
-        style={{
-          margin: "16px 0 0",
-          fontSize: 40,
-          lineHeight: 1.12,
-          fontWeight: 700,
-          color: "white",
-        }}
-      >
-        {event.title}
-      </h2>
-      {photo ? <EventPhoto image={photo} /> : null}
-      <p style={{ margin: "12px 0 0", fontSize: 16, color: "#94a3b8" }}>
-        {formatLongDate(event.timestamp)} · {event.location.name}, {event.location.country}
-        {event.magnitude ? ` · scale ${formatMagnitude(event.magnitude)}` : ""}
-      </p>
-      {event.motion ? (
-        <p style={{ margin: "8px 0 0", fontSize: 15, color: "#7dd3fc" }}>{motionCaption(event.motion)}</p>
-      ) : null}
-      <p
-        style={{
-          margin: "22px 0 0",
-          fontSize: 18,
-          lineHeight: 1.5,
-          color: "#cbd5e1",
-          display: "-webkit-box",
-          WebkitLineClamp: photo ? 4 : 8,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {event.summary}
-      </p>
-      <div style={{ marginTop: "auto" }}>
-        <div style={{ marginBottom: 10, fontSize: 12, fontWeight: 700, letterSpacing: "0.18em", color: "#64748b" }}>
-          SOURCES
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {event.sources.slice(0, 4).map((source) => (
-            <span
-              key={source.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                borderRadius: 999,
-                border: "1px solid #1e293b",
-                background: "rgba(15,23,42,0.85)",
-                padding: "5px 11px",
-                fontSize: 14,
-                color: "#cbd5e1",
-              }}
-            >
+          {event.title}
+        </h2>
+        <p style={{ margin: "12px 0 0", fontSize: 16, color: "#94a3b8" }}>
+          {formatLongDate(event.timestamp)} · {event.location.name}, {event.location.country}
+          {event.magnitude ? ` · scale ${formatMagnitude(event.magnitude)}` : ""}
+        </p>
+        {event.motion ? (
+          <p style={{ margin: "8px 0 0", fontSize: 15, color: "#7dd3fc" }}>{motionCaption(event.motion)}</p>
+        ) : null}
+        {photo && !portrait ? <EventPhoto image={photo} tall /> : null}
+        <p
+          style={{
+            margin: "22px 0 0",
+            fontSize: 18,
+            lineHeight: 1.5,
+            color: "#cbd5e1",
+            display: "-webkit-box",
+            WebkitLineClamp: photo ? (portrait ? 6 : 4) : portrait ? 9 : 8,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {event.summary}
+        </p>
+        <div style={{ marginTop: "auto" }}>
+          <div style={{ marginBottom: 10, fontSize: 12, fontWeight: 700, letterSpacing: "0.18em", color: "#64748b" }}>
+            SOURCES
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {event.sources.slice(0, 4).map((source) => (
               <span
+                key={source.id}
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 99,
-                  background: LEAN_COLORS[source.politicalLean] ?? LEAN_COLORS.mixed,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  borderRadius: 999,
+                  border: "1px solid #1e293b",
+                  background: "rgba(15,23,42,0.85)",
+                  padding: "5px 11px",
+                  fontSize: 14,
+                  color: "#cbd5e1",
                 }}
-              />
-              {source.publisher}
-            </span>
-          ))}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 99,
+                    background: LEAN_COLORS[source.politicalLean] ?? LEAN_COLORS.mixed,
+                  }}
+                />
+                {source.publisher}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -388,7 +445,7 @@ function EventPanel({
  * must survive a dead link: `onImageError` swallows the failure (without it
  * Remotion cancels the whole render) and the frame simply drops the photo.
  */
-function EventPhoto({ image }: { image: VideoImage }) {
+function EventPhoto({ image, tall }: { image: VideoImage; tall: boolean }) {
   const [broken, setBroken] = useState(false);
   if (broken) return null;
   return (
@@ -399,7 +456,7 @@ function EventPhoto({ image }: { image: VideoImage }) {
         delayRenderTimeoutInMilliseconds={15_000}
         style={{
           width: "100%",
-          height: 250,
+          height: tall ? 250 : 600,
           objectFit: "cover",
           borderRadius: 10,
           border: "1px solid #1e293b",
@@ -420,25 +477,30 @@ function Caption({
   elapsed,
   durationInFrames,
   opacity,
+  layout,
 }: {
   text: string;
   elapsed: number;
   durationInFrames: number;
   opacity: number;
+  layout: VideoLayout;
 }) {
   const pages = captionPages(text, durationInFrames);
   const page = activeCaptionPage(pages, elapsed);
   if (!page) return null;
+  // Landscape: captions sit left of the event panel. Portrait: pinned to the
+  // bottom edge of the frame, over the sheet, like subtitles.
+  const placement = layout.portrait
+    ? { left: 28, right: 28, bottom: 88 }
+    : { left: 48, right: 740, bottom: 78 };
   return (
     <div
       style={{
         position: "absolute",
-        left: 48,
-        right: 740,
-        bottom: 78,
         display: "flex",
         justifyContent: "center",
         opacity,
+        ...placement,
       }}
     >
       <div
@@ -462,9 +524,24 @@ function Caption({
   );
 }
 
-function Timeline({ events, frame, endStart }: { events: VideoEvent[]; frame: number; endStart: number }) {
+function Timeline({
+  events,
+  frame,
+  endStart,
+  layout,
+}: {
+  events: VideoEvent[];
+  frame: number;
+  endStart: number;
+  layout: VideoLayout;
+}) {
+  // Landscape: along the bottom edge. Portrait: also along the bottom edge,
+  // below the caption — the timeline hugs the bottom of the frame.
+  const placement = layout.portrait
+    ? { left: 56, right: 56, bottom: 34 }
+    : { left: 48, right: 48, bottom: 32 };
   return (
-    <div style={{ position: "absolute", left: 48, right: 48, bottom: 32, height: 22 }}>
+    <div style={{ position: "absolute", height: 22, ...placement }}>
       <div
         style={{
           position: "absolute",
@@ -504,7 +581,8 @@ function Timeline({ events, frame, endStart }: { events: VideoEvent[]; frame: nu
   );
 }
 
-function EndCard({ manifest, opacity }: { manifest: VideoManifest; opacity: number }) {
+function EndCard({ manifest, opacity, layout }: { manifest: VideoManifest; opacity: number; layout: VideoLayout }) {
+  const portrait = layout.portrait;
   return (
     <div style={{ position: "absolute", inset: 0, opacity }}>
       <div
@@ -513,15 +591,30 @@ function EndCard({ manifest, opacity }: { manifest: VideoManifest; opacity: numb
           left: 0,
           right: 0,
           bottom: 0,
-          height: 520,
+          height: portrait ? 780 : 520,
           background: "linear-gradient(to top, rgba(5,8,16,0.96) 30%, rgba(5,8,16,0) 100%)",
         }}
       />
-      <div style={{ position: "absolute", left: 72, right: 72, bottom: 80 }}>
+      <div
+        style={{
+          position: "absolute",
+          left: portrait ? 56 : 72,
+          right: portrait ? 56 : 72,
+          bottom: portrait ? 88 : 80,
+        }}
+      >
         <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.32em", color: "#7dd3fc" }}>
           END OF RECORD
         </div>
-        <h2 style={{ margin: "12px 0 0", maxWidth: 1000, fontSize: 48, lineHeight: 1.1, color: "white" }}>
+        <h2
+          style={{
+            margin: "12px 0 0",
+            maxWidth: portrait ? undefined : 1000,
+            fontSize: portrait ? 42 : 48,
+            lineHeight: 1.1,
+            color: "white",
+          }}
+        >
           {manifest.title}
         </h2>
         <p style={{ margin: "14px 0 0", fontSize: 18, color: "#94a3b8" }}>
@@ -534,7 +627,15 @@ function EndCard({ manifest, opacity }: { manifest: VideoManifest; opacity: numb
           </p>
         ) : null}
         {manifest.relatedStories.length > 0 ? (
-          <div style={{ marginTop: 22, display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <div
+            style={{
+              marginTop: 22,
+              display: "flex",
+              flexDirection: portrait ? "column" : "row",
+              flexWrap: "wrap",
+              gap: 10,
+            }}
+          >
             {manifest.relatedStories.slice(0, 3).map((story) => (
               <div
                 key={story.slug}

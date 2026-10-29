@@ -265,16 +265,20 @@ if (mode === "stage") {
 if (mode === "studio") {
   await run("npx", ["remotion", "studio", "remotion/index.ts"]);
 } else if (mode === "render") {
-  const slug = args[0] && !args[0].startsWith("-") ? args[0] : "covid-19-pandemic";
-  const extra = args[0] && !args[0].startsWith("-") ? args.slice(1) : args;
+  // `<slug>` renders 16:9; `<slug>-vertical` renders the 9:16 mobile cut.
+  const vertical = args[0]?.endsWith("-vertical") ?? false;
+  const slugArg = vertical ? args[0].replace(/-vertical$/, "") : args[0];
+  const slug = slugArg && !slugArg.startsWith("-") ? slugArg : "covid-19-pandemic";
+  const extra = slugArg && !slugArg.startsWith("-") ? args.slice(1) : args;
+  const composition = vertical ? `${slug}-vertical` : slug;
   if (!slugs.includes(slug)) {
     console.error(`Unknown story "${slug}". Available: ${slugs.join(", ")}`);
     process.exit(1);
   }
-  const output = `out/${slug}.mp4`;
+  const output = vertical ? `out/${slug}-vertical.mp4` : `out/${slug}.mp4`;
   fs.mkdirSync(path.join(root, "out"), { recursive: true });
-  console.log(`Rendering ${slug} → ${output}`);
-  await run("npx", ["remotion", "render", "remotion/index.ts", slug, output, ...extra]);
+  console.log(`Rendering ${composition} → ${output}`);
+  await run("npx", ["remotion", "render", "remotion/index.ts", composition, output, ...extra]);
 } else if (mode === "still") {
   const slug = args[0] ?? "covid-19-pandemic";
   const frame = args[1] ?? "150";

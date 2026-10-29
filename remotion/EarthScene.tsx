@@ -8,6 +8,7 @@ import { actorSymbol, paintCounter, symbolFor, type MapSymbol } from "../src/lib
 import type { MapPlace } from "../src/lib/types";
 import { CATEGORY_COLORS } from "../src/lib/ui";
 import { latLngToVector, type GlobeAim } from "./geo";
+import type { VideoLayout } from "./videoLayout";
 import type { VideoEvent } from "./types";
 
 // This file uses the low-level createRoot() API, so fiber's built-in
@@ -123,10 +124,12 @@ function Marker({
   event,
   active,
   frame,
+  scaleBoost = 1,
 }: {
   event: VideoEvent;
   active: boolean;
   frame: number;
+  scaleBoost?: number;
 }) {
   const color = CATEGORY_COLORS[event.category];
   const symbol = symbolFor(event.category, event.motion);
@@ -142,7 +145,7 @@ function Marker({
   const battle = active && event.motion?.kind === "impact";
   const pop = battle ? Math.min(1, frame / 8) : 1;
   const beat = active ? 1 + Math.sin(frame * (battle ? 0.45 : 0.2)) * (battle ? 0.08 : 0.04) : 1;
-  const scale = (active ? 0.078 : 0.042) * pop * beat;
+  const scale = (active ? 0.078 : 0.042) * pop * beat * scaleBoost;
 
   return (
     <sprite position={position} scale={scale} renderOrder={4}>
@@ -354,6 +357,7 @@ interface EarthSceneProps {
   shift: number;
   illustrateId: string | null;
   motionFrame: number;
+  layout: VideoLayout;
 }
 
 /**
@@ -370,7 +374,19 @@ function ReadyFrame({ onPainted }: { onPainted: () => void }) {
   return null;
 }
 
-function GlobeCanvas({ width, height, children }: { width: number; height: number; children: ReactNode }) {
+function GlobeCanvas({
+  width,
+  height,
+  fov,
+  camZ,
+  children,
+}: {
+  width: number;
+  height: number;
+  fov: number;
+  camZ: number;
+  children: ReactNode;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<ReturnType<typeof createRoot> | null>(null);
   const childrenRef = useRef(children);
@@ -411,7 +427,7 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
         dpr: 1,
         frameloop: "never",
         gl: { antialias: true, alpha: false, preserveDrawingBuffer: true },
-        camera: { fov: 35, position: [0, 0.06, 3.5], near: 0.1, far: 40 },
+        camera: { fov, position: [0, 0.06, camZ], near: 0.1, far: 40 },
         onCreated: ({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping;
           gl.toneMappingExposure = 1.25;
@@ -422,7 +438,7 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
       .catch((err: unknown) => {
         console.error("[EarthScene] Globe canvas configure failed:", err);
       });
-  }, [width, height]);
+  }, [width, height, fov, camZ]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -449,7 +465,7 @@ function GlobeCanvas({ width, height, children }: { width: number; height: numbe
       });
     };
     if (root && root.ready.status === "fulfilled") draw();
-    else root?.ready.then(() => draw(), () => {});
+    else root?.ready.then(() => draw(), () => { });
     return () => {
       cancelled = true;
       release();
@@ -475,6 +491,7 @@ export function EarthScene({
   shift,
   illustrateId,
   motionFrame,
+  layout,
 }: EarthSceneProps) {
   const { width, height } = useVideoConfig();
   // XYZ matches aimAt(): pitch first, then yaw, lands the target on the camera.
@@ -485,18 +502,59 @@ export function EarthScene({
   const visible = events.slice(0, revealed);
   const illustrated = illustrateId ? events.find((event) => event.id === illustrateId) : null;
 
+  // Landscape keeps the classic framing (camera y 0.06, fov 35) but a touch
+  // closer than before. Portrait is a close-up: the globe bleeds past the
+  // frame edges and the aimed event sits at the center of the strip above
+  // the bottom sheet, with the sheet overlapping the globe's lower limb.
+  // All offsets are world units — the globe is radius 1, and the visible
+  // world height is 2·tan(fov/2)·distance; pixel values here would fling
+  // the scene out of the frustum.
+  const CAM_Y = 0.06;
+  const LAND_FOV = 35;
+  const LAND_CAM_Z = 3.2;
+  // World height of one full frame measured at the globe's facing surface
+  // (distance camZ − 1), the plane markers live on — the reference for
+  // keeping marker sizes consistent across orientations.
+  const LAND_SURFACE_H = 2 * Math.tan((LAND_FOV * Math.PI) / 360) * (LAND_CAM_Z - 1);
+  let camZ = LAND_CAM_Z;
+  let fov = LAND_FOV;
+  let groupY = -0.05;
+  let markerScale = 1;
+  if (layout.portrait) {
+    // Globe + atmosphere (diameter ≈ 2.3) spanning 150% of the frame width.
+    const globeSpan = 3;
+    const visibleW = 2.3 / globeSpan;
+    const visibleH = (visibleW * height) / width;
+    fov = 40;
+    camZ = visibleH / (2 * Math.tan((fov * Math.PI) / 360));
+    // Center the aimed event point in the strip above the sheet. Projection
+    // is measured at the surface plane (camZ − 1), not the center plane, so
+    // the point lands where the fraction says despite the perspective.
+    const strip = Math.max(0.2, 1 - layout.panelHeight / height);
+    const surfaceH = 2 * Math.tan((fov * Math.PI) / 360) * (camZ - 1);
+    groupY = CAM_Y + (0.5 - strip / 2) * surfaceH;
+    // Match the markers' on-screen size to the landscape framing.
+    markerScale = Math.min(1.6, Math.max(1, surfaceH / LAND_SURFACE_H));
+  }
+
   return (
-    <GlobeCanvas width={width} height={height}>
+    <GlobeCanvas width={width} height={height} fov={fov} camZ={camZ}>
       <color attach="background" args={["#050810"]} />
       <ambientLight intensity={0.22} />
       <directionalLight position={[1.2, 0.4, 4]} intensity={1.15} color="#f4f8ff" />
       <directionalLight position={[-3.2, -0.6, -2]} intensity={0.28} color="#7dd3fc" />
       <Starfield />
-      <group position={[shift, -0.05, 0]}>
+      <group position={[shift * layout.slideScale, groupY, 0]}>
         <group rotation={rotation}>
           <Earth />
           {visible.map((event, index) => (
-            <Marker key={event.id} event={event} active={index === activeIndex} frame={frame} />
+            <Marker
+              key={event.id}
+              event={event}
+              active={index === activeIndex}
+              frame={frame}
+              scaleBoost={markerScale}
+            />
           ))}
           {visible.slice(1).map((event, index) => {
             const from = visible[index];
