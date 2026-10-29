@@ -30,9 +30,10 @@ function toServiceAccount(json: Record<string, unknown>): ServiceAccount {
 }
 
 async function loadServiceAccount(): Promise<ServiceAccount | null> {
-  const file = process.env.FIREBASE_SERVICE_ACCOUNT ?? "service-account.json";
   try {
-    return toServiceAccount(JSON.parse(await fs.readFile(path.resolve(file), "utf8")));
+    const base64: string = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 ?? "";
+    const serviceAccountJson = Buffer.from(base64, "base64").toString("utf8");
+    return toServiceAccount(JSON.parse(serviceAccountJson));
   } catch {
     return null;
   }

@@ -175,7 +175,6 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
             )}
             {ranked.map(({ item, reasons }) => {
               const readyCard = savedSlug(item, metas);
-              const shown = readyCard ? ["Ready on your map", ...reasons].slice(0, 2) : reasons;
               return (
                 <button
                   key={item.id}
@@ -197,7 +196,7 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
                   </div>
                   <p className="mt-2 flex-1 text-xs leading-relaxed text-slate-400">{item.blurb}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {shown.map((reason) => (
+                    {reasons.map((reason) => (
                       <span
                         key={reason}
                         className="glass-well rounded-full px-2 py-0.5 text-[10px] text-slate-400"
