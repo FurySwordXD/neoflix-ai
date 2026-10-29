@@ -90,13 +90,13 @@ export default function PlaybackBar({
   const showStepFill = playing && selectedIndex >= 0 && selectedIndex < n - 1;
 
   const btn =
-    "flex h-8 w-8 items-center justify-center rounded-md text-sm text-slate-300 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent";
+    "glass-well flex h-8 w-8 items-center justify-center rounded-lg text-sm text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent";
 
   return (
-    <div className="z-20 border-t border-slate-800 bg-slate-950/90 px-5 pb-3 pt-2 backdrop-blur">
-      <div className="flex items-center gap-4">
+    <div className="glass pointer-events-auto z-20 h-auto shrink-0 rounded-2xl px-4 pb-3 pt-2.5 sm:px-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         {/* Transport controls */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5">
           <button
             className={btn}
             onClick={() => onSelectIndex(Math.max(0, selectedIndex - 1))}
@@ -150,7 +150,7 @@ export default function PlaybackBar({
         </div>
 
         {/* Track */}
-        <div className="relative min-w-0 flex-1 px-2">
+        <div className="relative order-last w-full min-w-0 flex-1 px-2 md:order-none md:w-auto">
           {/* Year sections */}
           <div className="relative h-5">
             {sections.map((s) => {
@@ -200,7 +200,7 @@ export default function PlaybackBar({
                 <div
                   key={s.label}
                   className={`absolute inset-y-1 rounded ${
-                    i % 2 === 0 ? "bg-slate-800/40" : "bg-slate-800/15"
+                    i % 2 === 0 ? "bg-white/[0.06]" : "bg-white/[0.02]"
                   }`}
                   style={{ left: `${left}%`, width: `${right - left}%` }}
                 />
@@ -261,7 +261,7 @@ export default function PlaybackBar({
             {/* Hover tooltip */}
             {hovered && hoverIndex !== null && (
               <div
-                className="pointer-events-none absolute bottom-full z-30 mb-1 w-max max-w-[240px] -translate-x-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 shadow-xl"
+                className="glass-solid pointer-events-none absolute bottom-full z-30 mb-1 w-max max-w-[240px] -translate-x-1/2 rounded-lg px-2.5 py-1.5"
                 style={{ left: `${pos(hoverIndex)}%` }}
               >
                 <div className="truncate text-[11px] font-medium text-white">
@@ -276,7 +276,7 @@ export default function PlaybackBar({
         </div>
 
         {/* Readout */}
-        <div className="w-28 shrink-0 text-right">
+        <div className="w-24 shrink-0 text-right sm:w-28">
           <div className="text-[13px] font-semibold tabular-nums text-white">
             {selectedIndex >= 0 ? selectedIndex + 1 : 0}
             <span className="text-slate-500"> / {n}</span>

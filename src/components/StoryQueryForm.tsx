@@ -44,8 +44,8 @@ export default function StoryQueryForm({
         aria-label="Story topic"
         className={
           variant === "hero"
-            ? "min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none disabled:opacity-60"
-            : "min-w-[8rem] flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none disabled:opacity-60"
+            ? "glass-well min-w-0 flex-1 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none focus:ring-1 focus:ring-sky-400/40 disabled:opacity-60"
+            : "glass-well min-w-[8rem] flex-1 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none focus:ring-1 focus:ring-sky-400/40 disabled:opacity-60"
         }
       />
       <button
@@ -53,8 +53,8 @@ export default function StoryQueryForm({
         disabled={busy || query.trim().length < 2}
         className={
           variant === "hero"
-            ? "shrink-0 rounded-lg bg-violet-600 px-4 py-3 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
-            : "shrink-0 rounded-md bg-violet-600/90 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+            ? "shrink-0 rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 disabled:opacity-50"
+            : "shrink-0 rounded-lg bg-violet-600/90 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-violet-900/30 transition hover:bg-violet-500 disabled:opacity-50"
         }
       >
         {busy ? "Mapping…" : "Search"}

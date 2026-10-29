@@ -43,7 +43,7 @@ export default function ImmersivePreview({ slug }: { slug: string }) {
   }, [manifest]);
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center bg-[#050810] p-3 sm:p-5">
+    <div className="glass flex min-h-0 flex-1 items-center justify-center rounded-2xl p-3 sm:p-5">
       {error ? (
         <p className="max-w-md text-center text-sm text-red-300">{error}</p>
       ) : !manifest ? (
@@ -53,7 +53,7 @@ export default function ImmersivePreview({ slug }: { slug: string }) {
           <div className="shimmer mx-auto mt-5 h-1.5 w-40 rounded-full" />
         </div>
       ) : (
-        <div className="w-full max-w-[min(100%,calc((100dvh-6.75rem)*16/9))] overflow-hidden rounded-lg ring-1 ring-slate-800">
+        <div className="w-full max-w-[min(100%,calc((100dvh-6.75rem)*16/9))] overflow-hidden rounded-xl ring-1 ring-white/10">
           <Player
             ref={playerRef}
             component={StoryVideo}

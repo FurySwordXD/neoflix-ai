@@ -37,10 +37,10 @@ export default function RenderVideoButton({ slug }: { slug: string }) {
         onClick={render}
         disabled={busy}
         title={video.error ?? "Render this story as a video in the browser"}
-        className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-wait ${
+        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-wait ${
           failed
-            ? "bg-red-950 text-red-200 ring-1 ring-red-800 hover:bg-red-900"
-            : "bg-sky-600 text-white hover:bg-sky-500 disabled:bg-sky-800 disabled:text-sky-100"
+            ? "bg-red-950/80 text-red-200 ring-1 ring-red-700/70 hover:bg-red-900"
+            : "bg-sky-600 text-white shadow-lg shadow-sky-950/50 hover:bg-sky-500 disabled:bg-sky-800 disabled:text-sky-100"
         }`}
       >
         {failed ? "Retry render" : renderLabel(video.status, video.progress, busy)}
@@ -55,7 +55,7 @@ export default function RenderVideoButton({ slug }: { slug: string }) {
           type="button"
           onClick={() => downloadClientVideo(slug)}
           title="Download the rendered video"
-          className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white"
+          className="glass-well rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
         >
           Download
         </button>

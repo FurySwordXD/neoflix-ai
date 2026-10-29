@@ -25,7 +25,7 @@ export default function EventImageFigure({ image, size = "full" }: EventImageFig
       : "aspect-[16/10] w-full";
 
   const figure = (
-    <figure className={`group relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900/60 ${frame}`}>
+    <figure className={`glass-well group relative overflow-hidden rounded-xl ${frame}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={image.url}

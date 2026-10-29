@@ -12,10 +12,9 @@ import {
 } from "@/lib/mapMotion";
 import { actorSymbol, symbolFor } from "@/lib/mapSymbols";
 import type { Story, StoryEvent } from "@/lib/types";
-import { CATEGORY_COLORS, CATEGORY_LABELS, magnitudeToRadius } from "@/lib/ui";
+import { CATEGORY_COLORS, magnitudeToRadius } from "@/lib/ui";
 import { buildBadge } from "./globeBadges";
 import { buildSourceCards, type SourceCardsAnchor } from "./globeSourceCards";
-import MapSymbolIcon from "./MapSymbolIcon";
 
 interface GlobePoint {
   lat: number;
@@ -384,23 +383,6 @@ export default memo(function GlobeView({
         htmlElement={htmlElement}
       />
 
-      {/* Legend — hidden while focused so it doesn't crowd the source cards */}
-      {!selected && (
-        <div className="pointer-events-none absolute right-3 top-3 rounded-lg border border-slate-800/80 bg-slate-950/70 px-3 py-2 backdrop-blur">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
-              <div key={cat} className="flex items-center gap-1.5" style={{ color }}>
-                <span className="grid h-4 w-4 place-items-center rounded-[4px] border border-current bg-[#0c1220]">
-                  <MapSymbolIcon symbol={symbolFor(cat as StoryEvent["category"])} size={10} />
-                </span>
-                <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                  {CATEGORY_LABELS[cat as StoryEvent["category"]]}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 });

@@ -62,9 +62,9 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
   const catColor = CATEGORY_COLORS[event.category];
 
   return (
-    <aside className="scroll-slim fade-up flex h-full w-full max-w-md shrink-0 flex-col overflow-y-auto border-l border-slate-800 bg-slate-950/85 backdrop-blur-md">
+    <aside className="glass-solid scroll-slim fade-up flex h-full w-full flex-col overflow-y-auto rounded-2xl">
       {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 px-5 py-4">
+      <div className="glass-solid sticky top-0 z-10 rounded-t-2xl px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -102,7 +102,8 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
           </div>
           <button
             onClick={onClose}
-            className="rounded-md bg-slate-800/80 px-2 py-1 text-xs text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+            aria-label="Close this event"
+            className="glass-well rounded-lg px-2.5 py-1.5 text-xs text-slate-300 transition hover:text-white"
           >
             ✕
           </button>
@@ -142,10 +143,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
           </h3>
           <ul className="space-y-3">
             {event.sources.map((source) => (
-              <li
-                key={source.id}
-                className="rounded-lg border border-slate-800 bg-slate-900/60 p-3"
-              >
+              <li key={source.id} className="glass-row rounded-xl p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <a
@@ -161,7 +159,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
                       {source.publisher} · {formatDate(source.publishedAt)}
                     </span>
                   </div>
-                  <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
+                  <span className="glass-well shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-slate-300">
                     ↗
                   </span>
                 </div>
@@ -173,7 +171,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
                     {source.corroborates.map((claim) => (
                       <span
                         key={claim}
-                        className="rounded bg-slate-800/70 px-1.5 py-0.5 text-[10px] text-slate-400"
+                        className="glass-well rounded-md px-1.5 py-0.5 text-[10px] text-slate-400"
                       >
                         ✓ {claim}
                       </span>
@@ -201,7 +199,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="e.g. What's new in this story?"
-              className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+              className="glass-well min-w-0 flex-1 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none focus:ring-1 focus:ring-sky-400/40"
             />
             <button
               type="submit"
@@ -221,7 +219,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
           )}
 
           {answer && (
-            <div className="fade-up mt-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+            <div className="glass-row fade-up mt-3 rounded-xl p-3">
               <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-slate-300">
                 {answer}
               </p>
@@ -260,10 +258,7 @@ export default function EventDetail({ story, event, onClose }: EventDetailProps)
             </h3>
             <ul className="space-y-2">
               {story.relatedStories.map((rel) => (
-                <li
-                  key={rel.slug}
-                  className="rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-3"
-                >
+                <li key={rel.slug} className="glass-row rounded-xl border-dashed p-3">
                   <div className="text-[13px] font-medium text-slate-300">
                     {rel.title}
                   </div>

@@ -98,21 +98,21 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
   const tuned = interestLabels.length > 0 || regionLabels.length > 0;
 
   if (!ready) {
-    return <div className="h-screen bg-[#050810]" />;
+    return <div className="h-screen" />;
   }
 
   if (showPicker) {
     const picks = draft ?? { interests: profile.interests, regions: profile.regions };
     return (
-      <div className="scroll-slim flex h-screen flex-col overflow-y-auto bg-[#050810]">
-        <header className="border-b border-slate-800 bg-slate-950/80 px-5 py-4 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center gap-2">
+      <div className="scroll-slim flex h-dvh flex-col overflow-y-auto">
+        <div className="glass mx-auto mt-3 w-[calc(100%-1.5rem)] max-w-3xl rounded-2xl px-5 py-4">
+          <div className="flex items-center gap-2">
             <span className="text-lg">🌍</span>
             <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
               WorldNews
             </span>
           </div>
-        </header>
+        </div>
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-5 py-10">
           <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
             What should we map for you?
@@ -142,8 +142,8 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
                   }
                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     pressed
-                      ? "bg-sky-500/20 text-sky-100 ring-1 ring-sky-400/60"
-                      : "bg-slate-900 text-slate-300 ring-1 ring-slate-700 hover:bg-slate-800 hover:text-white"
+                      ? "bg-sky-500/25 text-sky-100 ring-1 ring-sky-400/60"
+                      : "glass-well text-slate-300 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {interest.label}
@@ -171,8 +171,8 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
                   }
                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     pressed
-                      ? "bg-violet-500/20 text-violet-100 ring-1 ring-violet-400/60"
-                      : "bg-slate-900 text-slate-300 ring-1 ring-slate-700 hover:bg-slate-800 hover:text-white"
+                      ? "bg-violet-500/25 text-violet-100 ring-1 ring-violet-400/60"
+                      : "glass-well text-slate-300 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {region.label}
@@ -185,7 +185,7 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
             <button
               type="button"
               onClick={finishPicker}
-              className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-500"
+              className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500"
             >
               {editing ? "Save interests" : "Continue"}
             </button>
@@ -208,24 +208,22 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
   }
 
   return (
-    <div className="scroll-slim h-screen overflow-y-auto bg-[#050810]">
-      <header className="border-b border-slate-800 bg-slate-950/80 px-5 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🌍</span>
-            <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
-              WorldNews
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={openPicker}
-            className="rounded-md px-2 py-1 text-xs text-slate-400 ring-1 ring-slate-800 hover:bg-slate-900 hover:text-slate-200"
-          >
-            Update interests
-          </button>
+    <div className="scroll-slim h-dvh overflow-y-auto">
+      <div className="glass mx-auto mt-3 flex w-[calc(100%-1.5rem)] max-w-6xl items-center justify-between gap-3 rounded-2xl px-5 py-4">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🌍</span>
+          <span className="text-sm font-bold uppercase tracking-[0.25em] text-slate-200">
+            WorldNews
+          </span>
         </div>
-      </header>
+        <button
+          type="button"
+          onClick={openPicker}
+          className="glass-well rounded-lg px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 hover:text-white"
+        >
+          Update interests
+        </button>
+      </div>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-8 pb-16">
         <StoryQueryForm variant="hero" onSearch={(query) => onGenerate(query)} />
@@ -249,7 +247,7 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
                   key={item.id}
                   type="button"
                   onClick={() => openTrend(item)}
-                  className="fade-up flex h-full flex-col rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-left transition hover:border-sky-700/70 hover:bg-slate-900/80 disabled:opacity-60"
+                  className="glass fade-up flex h-full flex-col rounded-2xl p-4 text-left transition hover:border-sky-400/40 disabled:opacity-60"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="text-sm font-semibold text-white">{item.title}</h3>
@@ -268,7 +266,7 @@ export default function Dashboard({ metas, trends, onGenerate }: DashboardProps)
                     {shown.map((reason) => (
                       <span
                         key={reason}
-                        className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-slate-400 ring-1 ring-slate-800"
+                        className="glass-well rounded-full px-2 py-0.5 text-[10px] text-slate-400"
                       >
                         {reason}
                       </span>
