@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import fs from "fs";
 import path from "path";
 import { getStory } from "./stories";
+import { getVoiceover } from "./voiceover";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
@@ -27,10 +28,6 @@ const globalJobs = globalThis as unknown as {
 };
 const jobs = globalJobs.__neoflixVideoJobs ?? new Map<string, InternalJob>();
 globalJobs.__neoflixVideoJobs = jobs;
-
-function apiBaseUrl(): string {
-  return process.env.NEOFLIX_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
-}
 
 export function videoOutputPath(slug: string): string {
   return path.join(process.cwd(), "out", `${slug}.mp4`);
@@ -114,7 +111,8 @@ export async function startVideoRender(slug: string): Promise<{
   job: VideoJob;
   httpStatus: number;
 }> {
-  if (!SLUG_RE.test(slug) || !(await getStory(slug))) {
+  const story = await getStory(slug);
+  if (!SLUG_RE.test(slug) || !story) {
     return {
       job: {
         slug,
@@ -157,12 +155,21 @@ export async function startVideoRender(slug: string): Promise<{
   };
   jobs.set(slug, job);
 
+  // Voice-overs resolved here, in the server process, so the child never
+  // needs to talk to the API (a spawned process has no page origin).
+  const voiceovers: Record<string, { script: string | null; audioUrl: string | null }> = {};
+  for (const event of story.events) {
+    const vo = await getVoiceover(slug, event.id).catch(() => null);
+    voiceovers[event.id] = { script: vo?.script ?? null, audioUrl: vo?.audioUrl ?? null };
+  }
+
   const child = spawn(process.execPath, ["remotion/cli.mjs", "render", slug], {
     cwd: process.cwd(),
-    // The CLI loads stories through this server's API, wherever they are stored.
-    env: { ...process.env, NEOFLIX_API_URL: apiBaseUrl() },
-    stdio: ["ignore", "pipe", "pipe"],
+    // The child has no page origin, so it can't fetch from the API; the
+    // story and its voice-overs are piped over stdin instead.
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  child.stdin.end(JSON.stringify({ story, voiceovers }));
   job.child = child;
 
   let buffer = "";

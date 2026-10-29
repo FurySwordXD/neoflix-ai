@@ -3,19 +3,27 @@ import fs from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import { getStory } from "@/lib/stories";
+import { getVoiceover } from "@/lib/voiceover";
 import type { Story } from "@/lib/types";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
-/** Runs the CLI's stage-one on this story, handing it the story JSON on stdin. */
-function stageStory(story: Story) {
+/**
+ * Runs the CLI's stage-one on this story. The story JSON and every event's
+ * voice-over go over stdin, so the child process never needs to know where
+ * the API lives — it only downloads the clips and times the video.
+ */
+function stageStory(
+  story: Story,
+  voiceovers: Record<string, { script: string | null; audioUrl: string | null }>
+) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(process.execPath, ["remotion/cli.mjs", "stage-one", story.slug], {
       cwd: process.cwd(),
       stdio: ["pipe", "ignore", "pipe"],
     });
     child.stdin.on("error", reject);
-    child.stdin.end(JSON.stringify(story));
+    child.stdin.end(JSON.stringify({ story, voiceovers }));
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
@@ -43,7 +51,15 @@ export async function POST(
     if (!story) {
       return NextResponse.json({ error: "Story not found" }, { status: 404 });
     }
-    await stageStory(story);
+    // Voice-overs are resolved in this process (a cold clip is generated on
+    // demand) and handed to the child over stdin: a spawned process has no
+    // page origin, so it cannot resolve relative fetch URLs like "/".
+    const voiceovers: Record<string, { script: string | null; audioUrl: string | null }> = {};
+    for (const event of story.events) {
+      const vo = await getVoiceover(slug, event.id).catch(() => null);
+      voiceovers[event.id] = { script: vo?.script ?? null, audioUrl: vo?.audioUrl ?? null };
+    }
+    await stageStory(story, voiceovers);
     const raw = await fs.readFile(
       path.join(process.cwd(), "public/remotion", slug, "manifest.json"),
       "utf8"
