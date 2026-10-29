@@ -178,7 +178,9 @@ export function StoryVideo({ manifest }: StoryVideoProps) {
             durationInFrames={Math.max(1, item.durationInFrames - manifest.audioDelayFrames)}
             premountFor={20}
           >
-            <Audio src={staticFile(item.audio)} />
+            {/* Absolute URLs (Firebase Storage) are used as-is; relative paths
+                are staged static files from a local CLI run. */}
+            <Audio src={/^https?:\/\//.test(item.audio) ? item.audio : staticFile(item.audio)} />
           </Sequence>
         ) : null
       )}

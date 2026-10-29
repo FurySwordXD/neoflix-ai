@@ -7,8 +7,6 @@ const nextConfig: NextConfig = {
     "remotion",
     "@remotion/player",
     "@remotion/web-renderer",
-    "@remotion/media",
-    "@remotion/three",
     "@react-three/fiber",
   ],
 };

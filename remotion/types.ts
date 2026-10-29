@@ -25,7 +25,7 @@ export interface VideoEvent {
   sources: VideoSource[];
   /** Spoken line, when a voice-over script has been generated. */
   script: string | null;
-  /** Public-folder path of the narration mp3, or null when this event is silent. */
+  /** Absolute Firebase URL of the narration mp3 (null when this event is silent). */
   audio: string | null;
   audioSeconds: number | null;
   from: number;

@@ -54,7 +54,7 @@ $$\text{cosine}(\vec{u}, \vec{s}) = \frac{\vec{u} \cdot \vec{s}}{\|\vec{u}\| \, 
 
 $$\text{MMR} = \lambda \cdot \text{score}(\vec{s}) - (1-\lambda) \cdot \max_{\vec{d} \in \text{picked}} \text{cosine}(\vec{s}, \vec{d})$$
 
-- **The video renderer.** A full Remotion composition (`remotion/StoryVideo.tsx` + `EarthScene.tsx`) turns the story into an actual documentary: a three.js Earth with an atmospheric glow shader and a procedural starfield, a camera that flies between event locations, kinetic captions, and the voice-over tracks. The twist: we render **in the browser** with `@remotion/web-renderer` — press a button, and a 1080p mp4 is encoded locally in a few seconds, with a progress bar and a download. No server farm, no render queue, no per-minute render bill.
+- **The video renderer.** A full Remotion composition (`remotion/StoryVideo.tsx` + `EarthScene.tsx`) turns the story into an actual documentary: a three.js Earth with an atmospheric glow shader and a procedural starfield, a camera that flies between event locations, kinetic captions, and the voice-over tracks. The twist: we render **in the browser** with `@remotion/web-renderer` — press a button, and a 1080p mp4 is encoded locally in a few seconds, with a progress bar and a download. No server farm, no render queue, no per-minute render bill — the server only ships the manifest and the Firebase audio URLs.
 
 ### The challenges we faced
 
@@ -98,9 +98,6 @@ STORY_STORE=neo4j NEO4J_URI=bolt://localhost:7687 ...
 # Graph-first research + the autonomous trend-sync worker
 npm run graph:import
 npm run sync:trends
-
-# Render video stories from the CLI (falls back to src/data/stories)
-npm run video
 ```
 
 ### Tests

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteStory, getStory } from "@/lib/stories";
 import { deleteVoiceoverUploads } from "@/lib/firebaseStorage";
-import { cancelVideoRender, deleteVideoArtifact } from "@/lib/renderVideo";
 import { deleteVoiceoverCache } from "@/lib/voiceover";
 
-/** Slugs are kebab-case: the same guard the video route applies before touching paths. */
+/** Slugs are kebab-case: the same guard every story route applies. */
 const SLUG_RE = /^[a-z0-9-]+$/;
 
 export async function GET(
@@ -20,9 +19,9 @@ export async function GET(
 }
 
 /**
- * Dev-only: remove a saved story — its store record, voice-over caches and any
- * rendered video — so the same topic can be compiled from scratch again.
- * A missing slug is still a success, so retries and recreates stay simple.
+ * Dev-only: remove a saved story — its store record and its voice-over clips
+ * — so the same topic can be compiled from scratch again. A missing slug is
+ * still a success, so retries and recreates stay simple.
  */
 export async function DELETE(
   _req: NextRequest,
@@ -38,9 +37,7 @@ export async function DELETE(
   try {
     await deleteStory(slug); // silent no-op when nothing is saved
     deleteVoiceoverCache(slug);
-    cancelVideoRender(slug);
-    deleteVideoArtifact(slug);
-    // The Firebase mirror is best-effort; a leftover clip is never referenced again.
+    // The Firebase clips are removed best-effort; a leftover clip is never referenced again.
     void deleteVoiceoverUploads(slug);
     return NextResponse.json({ deleted: slug });
   } catch (err) {
