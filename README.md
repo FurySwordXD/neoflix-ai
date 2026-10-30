@@ -1,10 +1,10 @@
 # 🌍 Neoflix — Netflix for News, Powered by Agentic AI
 
-> **You don't scroll through the news anymore. You press play on it.**
+> **Stop scrolling through the news. Play it.**
 
 **Live demo:** https://neoflixai.vercel.app/
 
-Type any topic — *"the 2026 midterms"*, *"COVID-19"*, *"the Apollo 11 moon landing"* — and an agentic AI researches it, compiles a documentary-style timeline of real, sourced events, plays it out on an interactive 3D globe with a broadcast newsreader's voice, and even renders a downloadable 1080p video — all in your browser.
+Type any topic — *"the 2026 midterms"*, *"COVID-19"*, *"Antarctic ice sheet"* — and our agentic deep research AI it, compiles a documentary-style timeline of real, sourced events, plays it out on an interactive 3D globe with a broadcast newsreader's voice, and even renders a video — all in your browser.
 
 ---
 
@@ -24,13 +24,13 @@ So we built **Neoflix**: the Netflix for news, powered by agentic AI. Every stor
 
 A topic becomes a story in three phases:
 
-1. **Research (agentic).** The model — NVIDIA Nemotron on Nebius AI Studio — runs a tool-use loop: it must call the Tavily `web_search` tool *before writing anything*. It probes broadly, then pins down the latest developments, and then writes. So everything is grounded with proper sources and citations instead of hallucinations.
+1. **Research (agentic loop).** The model — NVIDIA Nemotron on Nebius AI Studio — runs a tool-use loop: it must call the Tavily `web_search` tool *before writing anything*. It probes broadly, then pins down the latest developments, and then writes. So everything is grounded with proper sources and citations instead of hallucinations.
 
 2. **Compile (narrative).** The model returns chronological events as JSON, shaped into a documentary arc — `setup → spark → escalation → turning point → climax → fallout`, or `now` for ongoing stories. Each event carries a **connection chain**: the model identifies the 2–3 real driving factors (a court ruling, a policy shift, a statistic) and weaves each one as its own mini-timeline *before* the moment it visibly shaped the main story — so every "why did that happen?" has an answer on the map.
 
-3. **Ground (trust).** Every event is anchored: a real place with accurate coordinates, 2+ real sources with publication dates, an outlet bias classification (`political lean` + `factual rating`, MBFC-style), and photos harvested from the coverage. Every image URL is fetched, decoded, and byte-verified before it's ever offered to the model — a 404, an HTML page, or a 1×1 tracking pixel never reaches the story.
+3. **Ground (trust).** Every event is anchored: a real place with accurate coordinates, 2+ real sources with publication dates, an outlet bias classification (`political lean` + `factual rating`, MBFC-style), and photos harvested from the coverage.
 
-The result plays on an interactive **3D globe**: campaign-style map animations show troops flowing, sieges encircling, missiles launching, and diseases spreading — exactly the kind of motion the sources describe, and nothing more. A documentary voice-over (ElevenLabs TTS) narrates each beat. You can pause, scrub the timeline, and **ask the story** — a streaming chat (Nemotron Nano on Nebius) that may **only** answer from the event records, citing each claim like `[e01]`, `[e06]`; tapping a citation jumps to that event on the timeline, and the conversation history stays in your browser.
+The result plays on an interactive **3D globe**: campaign-style map animations show troops flowing, sieges encircling, missiles launching, and diseases spreading — exactly the kind of motion the sources describe, and nothing more. A documentary voice-over (ElevenLabs TTS) narrates each beat. You can pause, scrub the timeline, and **ask the story** — a streaming chat, Nemotron Nano on Nebius, that may **only** answer from the event records, citing each claim.
 
 ### What inspired us
 
@@ -69,7 +69,6 @@ $$\text{MMR} = \lambda \cdot \text{score}(\vec{s}) - (1-\lambda) \cdot \max_{\ve
 - **Grounding is a system design.** Every layer — the search tool, the schema, the JSON validator, the image verifier — must *default to refusing* what it can't verify. "Fail closed" is the only reliable anti-hallucination strategy we found.
 - **Graphs are great memory for agents.** Storing research as a Neo4j graph (Articles, Sources, Topics, traffic) means the agent's next research session is incremental, not cold — and the graph doubles as the analytics layer for the dashboard.
 - **The model is a compiler, not an author.** Our best results came from treating the LLM as a strict translator of *verified facts* into a narrative format — with validators and caps everywhere — never as a free writer.
-- **Tests catch the agents, not just the code.** Because every dependency is injected (`CycleDeps`), we could run the full sync cycle on fakes — 243 tests, including a real Neo4j in Testcontainers, gate every change.
 
 ---
 
