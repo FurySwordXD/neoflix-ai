@@ -87,18 +87,3 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000), type a topic, and press play.
-
-### Optional: the full pipeline
-
-```bash
-# Store stories in Neo4j (the shared knowledge graph) instead of JSON files
-STORY_STORE=neo4j NEO4J_URI=bolt://localhost:7687 ...
-
-# Graph-first research + the autonomous trend-sync worker. Each sync cycle
-# scrapes the Google Trends daily feeds (SCRAPE_GEOS, default
-# US,GB,IN,BR,DE,JP,AU,CA), classifies the trending topics and links stories
-# that already exist — stories themselves are researched lazily, when a
-# reader opens a trend card.
-npm run graph:import
-npm run sync:trends
-```
