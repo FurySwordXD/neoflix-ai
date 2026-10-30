@@ -7,6 +7,13 @@ import OpenAI from "openai";
  */
 export const NEBIUS_BASE_URL = "https://api.studio.nebius.ai/v1/";
 export const NEBIUS_MODEL = "nvidia/nemotron-3-super-120b-a12b";
+/**
+ * Nemotron Nano answers "Ask the story": the grounded Q&A chat is a small,
+ * fast model job, so it runs on the compact Nemotron Nano instead of the
+ * big compiler model. Overridable like every other model setting.
+ */
+export const NEBIUS_ASK_MODEL =
+  process.env.NEBIUS_ASK_MODEL ?? "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B";
 
 export function getNebiusClient(): OpenAI {
   const apiKey = process.env.NEBIUS_API_KEY;

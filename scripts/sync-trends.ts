@@ -1,17 +1,24 @@
 /**
- * Turn news-scraper's trending Topics into stories: classify new trends,
- * then create or refresh their stories in the shared graph.
+ * Stock the graph with trending topics for the lazy pipeline: scrape Google
+ * Trends, classify the new topics, and link stories that already exist. The
+ * agentic research runs when a reader opens a stocked trend.
  *
  *   npm run sync:trends            one cycle (same as --once)
  *   npm run sync:trends -- --loop  a cycle every SYNC_INTERVAL_MINUTES (default 30)
  *
  * Needs STORY_STORE=neo4j, NEO4J_URI, NEO4J_PASSWORD and NEBIUS_API_KEY.
+ * Each cycle scrapes first (SCRAPE_GEOS, default US,GB,IN,BR,DE,JP,AU,CA;
+ * SCRAPE_ITEM_LIMIT=0 disables it) so the graph has fresh trending topics.
+ * No stories are generated here — a trend card without a story is compiled
+ * by the interactive pipeline when a reader opens it.
  * Ctrl-C stops after aborting the story in progress; a second Ctrl-C exits at once.
  */
 import fs from "fs";
 import path from "path";
 import { storeKindFromEnv } from "../src/lib/stories";
 import { closeDriver } from "../src/lib/storyStore/neo4j";
+import { scrapeSettingsFromEnv } from "../src/lib/scraper/config";
+import { runScrape } from "../src/lib/scraper/runner";
 import { syncSettingsFromEnv, type SyncSettings } from "../src/lib/trendSync/config";
 import { runCycle } from "../src/lib/trendSync/decide";
 import { graphConnectionFromEnv, type GraphConnection } from "../src/lib/trendSync/graph";
@@ -37,6 +44,9 @@ function loadConfig(): { mode: Mode; settings: SyncSettings; conn: GraphConnecti
     throw new ConfigError("needs STORY_STORE=neo4j (it reads trends from and writes stories to the graph).");
   }
   if (!process.env.NEBIUS_API_KEY) throw new ConfigError("needs NEBIUS_API_KEY to be set.");
+  // Validate the scraper settings up front too, so a bad SCRAPE_* value fails
+  // here rather than two lines into the first cycle.
+  scrapeSettingsFromEnv();
   const settings = syncSettingsFromEnv();
   const conn = graphConnectionFromEnv();
   if (!conn) throw new ConfigError("could not connect to Neo4j.");
@@ -55,6 +65,21 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
 
 async function cycleOnce(conn: GraphConnection, settings: SyncSettings, signal: AbortSignal): Promise<boolean> {
   try {
+    // The scrape keeps the graph stocked with trending topics; the sync
+    // worker then classifies them and links stories that already exist. A
+    // scrape failure is logged and the cycle continues on whatever the
+    // graph already holds.
+    try {
+      await runScrape({
+        conn,
+        settings: scrapeSettingsFromEnv(),
+        log: (line) => console.log(line),
+        warn: (line) => console.warn(line),
+        signal,
+      });
+    } catch (err) {
+      console.error(`scrape: ${err instanceof Error ? err.message : String(err)}`);
+    }
     const summary = await runCycle(createCycleDeps(conn, settings, signal));
     return summary.failed === 0;
   } catch (err) {

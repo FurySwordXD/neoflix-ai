@@ -18,6 +18,8 @@ interface MobileEventSheetProps {
   expanded: boolean;
   /** Open a related story: the saved one, or a fresh compile if it is not saved. */
   onOpenStory?: (slug: string, title: string) => void;
+  /** Jump to a cited event on the timeline (an [e01] chip was tapped). */
+  onShowEvent?: (eventId: string) => void;
   onExpand: () => void;
   onCollapse: () => void;
   /** Dismiss the event and stop playback — the sheet's close button. */
@@ -39,6 +41,7 @@ export default function MobileEventSheet({
   total,
   expanded,
   onOpenStory,
+  onShowEvent,
   onExpand,
   onCollapse,
   onClose,
@@ -102,6 +105,7 @@ export default function MobileEventSheet({
                 event={event}
                 stories={stories}
                 onOpenStory={onOpenStory}
+                onShowEvent={onShowEvent}
                 onClose={onClose}
               />
             </div>

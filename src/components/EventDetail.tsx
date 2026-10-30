@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import type {
-  SourceRef,
   Story,
   StoryEvent,
 } from "@/lib/types";
 import { motionCaption } from "@/lib/mapMotion";
 import BiasBadge from "./BiasBadge";
 import EventImageFigure from "./EventImageFigure";
+import StoryChat from "./StoryChat";
 import {
   BEAT_LABELS,
   CATEGORY_COLORS,
@@ -16,13 +15,6 @@ import {
   formatDate,
   formatMagnitude,
 } from "@/lib/ui";
-
-interface Citation {
-  eventId: string;
-  title: string;
-  timestamp: string;
-  sources: Array<Pick<SourceRef, "id" | "publisher" | "title" | "url" | "bias">>;
-}
 
 /** Light same-title check for the card label; full matching lives in AppShell. */
 function isSaved(slug: string, title: string, stories: Array<Pick<Story, "slug" | "title">>): boolean {
@@ -41,38 +33,12 @@ interface EventDetailProps {
   stories: Array<Pick<Story, "slug" | "title" | "status">>;
   /** Open a related story: the saved one, or a fresh compile if it is not saved. */
   onOpenStory?: (slug: string, title: string) => void;
+  /** Jump to a cited event on the timeline (an [e01] chip was tapped). */
+  onShowEvent?: (eventId: string) => void;
   onClose: () => void;
 }
 
-export default function EventDetail({ story, event, stories, onOpenStory, onClose }: EventDetailProps) {
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [citations, setCitations] = useState<Citation[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function ask(q: string) {
-    if (!q.trim() || loading) return;
-    setLoading(true);
-    setError(null);
-    setAnswer(null);
-    try {
-      const res = await fetch("/api/ai/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: story.slug, question: q }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Request failed");
-      setAnswer(data.answer);
-      setCitations(data.citations ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+export default function EventDetail({ story, event, stories, onOpenStory, onShowEvent, onClose }: EventDetailProps) {
   const catColor = CATEGORY_COLORS[event.category];
 
   return (
@@ -240,72 +206,8 @@ export default function EventDetail({ story, event, stories, onOpenStory, onClos
           </section>
         )}
 
-        {/* Grounded Q&A — Nebius at runtime */}
-        <section>
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-            Ask the story
-          </h3>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              ask(question);
-            }}
-            className="flex gap-2"
-          >
-            <input
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g. What's new in this story?"
-              className="glass-well min-w-0 flex-1 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none focus:ring-1 focus:ring-sky-400/40"
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-md bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
-            >
-              {loading ? "…" : "Ask"}
-            </button>
-          </form>
-
-          {loading && <div className="shimmer mt-3 h-12 rounded-md" />}
-
-          {error && (
-            <p className="mt-3 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
-              {error}
-            </p>
-          )}
-
-          {answer && (
-            <div className="glass-row fade-up mt-3 rounded-xl p-3">
-              <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-slate-300">
-                {answer}
-              </p>
-              {citations.length > 0 && (
-                <div className="mt-3 border-t border-slate-800 pt-2">
-                  <span className="text-[10px] uppercase tracking-wide text-slate-500">
-                    Cited sources
-                  </span>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {citations.flatMap((c) =>
-                      c.sources.map((s) => (
-                        <a
-                          key={s.id}
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-full border border-slate-700 bg-slate-800/60 px-2 py-0.5 text-[10px] text-slate-300 hover:border-sky-600 hover:text-sky-300"
-                          title={s.title}
-                        >
-                          {s.publisher} [{c.eventId}]
-                        </a>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+        {/* Grounded Q&A — Nemotron Nano on Nebius, chat kept in the browser */}
+        <StoryChat slug={story.slug} events={story.events} onShowEvent={onShowEvent} />
       </div>
     </aside>
   );

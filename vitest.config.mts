@@ -17,6 +17,7 @@ export default defineConfig({
         "src/lib/storyStore/**",
         "src/lib/stories.ts",
         "src/lib/graphResearch.ts",
+        "src/lib/scraper/**",
         "src/lib/trendSync/**",
         "src/lib/trends.ts",
         "src/lib/trendRegions.ts",

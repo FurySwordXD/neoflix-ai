@@ -176,6 +176,12 @@ export default function StoryMapApp({
     setTimelineOpen(false);
   }, []);
 
+  /** A cited event was tapped in the story chat: focus it. */
+  const showEvent = useCallback((eventId: string) => {
+    setSelectedId(eventId);
+    setTimelineOpen(false);
+  }, []);
+
   const selectIndex = useCallback(
     (index: number) => {
       const event = events[index];
@@ -709,6 +715,7 @@ export default function StoryMapApp({
                     event={selected}
                     stories={visibleStories}
                     onOpenStory={onOpenStory}
+                    onShowEvent={showEvent}
                     onClose={() => {
                       setAutoplay(false);
                       setSelectedId(null);
@@ -732,6 +739,7 @@ export default function StoryMapApp({
                   total={events.length}
                   expanded={sheetOpen}
                   onOpenStory={onOpenStory}
+                  onShowEvent={showEvent}
                   onExpand={() => {
                     setAutoplay(false);
                     setSheetOpen(true);

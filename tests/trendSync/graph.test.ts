@@ -3,7 +3,7 @@ import neo4j, { type Driver } from "neo4j-driver";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createNeo4jStore } from "@/lib/storyStore/neo4jStore";
 import { markTopicsSynced, saveClassifications } from "@/lib/trendSync/classify";
-import { linkStoryToTopic } from "@/lib/trendSync/decide";
+import { linkStoryToTopic } from "@/lib/trendSync/graph";
 import type { GraphConnection } from "@/lib/trendSync/graph";
 import { acquireLease } from "@/lib/trendSync/lock";
 import { loadCandidates } from "@/lib/trendSync/selection";

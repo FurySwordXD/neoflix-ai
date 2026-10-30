@@ -30,7 +30,7 @@ A topic becomes a story in three phases:
 
 3. **Ground (trust).** Every event is anchored: a real place with accurate coordinates, 2+ real sources with publication dates, an outlet bias classification (`political lean` + `factual rating`, MBFC-style), and photos harvested from the coverage. Every image URL is fetched, decoded, and byte-verified before it's ever offered to the model — a 404, an HTML page, or a 1×1 tracking pixel never reaches the story.
 
-The result plays on an interactive **3D globe**: campaign-style map animations show troops flowing, sieges encircling, missiles launching, and diseases spreading — exactly the kind of motion the sources describe, and nothing more. A documentary voice-over (ElevenLabs TTS) narrates each beat. You can pause, scrub the timeline, and ask grounded questions about the story — the Q&A model may **only** answer from the event records, citing each claim like `[e01]`, `[e06]`.
+The result plays on an interactive **3D globe**: campaign-style map animations show troops flowing, sieges encircling, missiles launching, and diseases spreading — exactly the kind of motion the sources describe, and nothing more. A documentary voice-over (ElevenLabs TTS) narrates each beat. You can pause, scrub the timeline, and **ask the story** — a streaming chat (Nemotron Nano on Nebius) that may **only** answer from the event records, citing each claim like `[e01]`, `[e06]`; tapping a citation jumps to that event on the timeline, and the conversation history stays in your browser.
 
 ### What inspired us
 
@@ -45,8 +45,8 @@ Three things collided:
 The whole stack runs serverless-friendly on Next.js:
 
 - **The story pipeline** (`src/lib/generateStory.ts`) is an NDJSON stream: the model streams tool calls and JSON events, and the UI shows live progress ("researching…", "compiling events…"). The server-side research layer (`webSearch.ts` + `graphResearch.ts`) is **graph-first**: when the Neo4j knowledge graph is enabled, we search the articles our own scraper has already collected — enough fresh hits and Tavily is skipped entirely — and new search results are written back into the graph, so the next search for the same story is cheaper and faster.
-- **Two storage backends** behind one `StoryStore` interface: plain JSON files under `src/data/stories` for zero-setup, or **Neo4j** — the real knowledge graph: `(:Story)-[:HAS_EVENT]->(:Event)-[:CITES]->(:Article)-[:PUBLISHED_BY]->(:Source)`, plus `:ABOUT` edges to trending `(:Topic)` nodes and their `:TRENDED` geo traffic. Both stores pass the same contract test suite (yes, the Neo4j one runs against a real Neo4j via Testcontainers).
-- **An autonomous trend sync worker** (`src/lib/trendSync/`). This is the "Netflix" part: a background loop watches what's trending, classifies topics with the model, and decides — topic by topic — whether to **generate** a new story, **refresh** an existing one, or just **link** it, all within per-cycle caps and distributed lease locks so two workers never fight over the same story. The dashboard then ranks what's live with a **content-based recommender**: your reader profile is a weighted vector over interests, and each story is scored by cosine similarity blended with a region match and a freshness prior:
+- **Two storage backends** behind one `StoryStore` interface: plain JSON files under `src/data/stories` for zero-setup, or **Neo4j** — the real knowledge graph: `(:Story)-[:HAS_EVENT]->(:Event)-[:CITES]->(:Article)-[:PUBLISHED_BY]->(:Source)`, plus `:ABOUT` edges to trending `(:Topic)` nodes and their `:TRENDED` geo traffic.
+- **An autonomous trend sync worker** (`src/lib/trendSync/`). This is the "Netflix" part: a background loop runs a **lazy pipeline** — it scrapes Google Trends into the graph, classifies topics with the model (verdicts are cached on the Topic node, so a topic is only ever classified once), and links the stories that already exist. A worthy topic with no story is **stocked** on the dashboard untouched: the expensive agentic research runs when a reader actually opens the card, streamed live with progress steps — and a `story:<query>` lease lock in the graph means concurrent openers of the same trend queue behind one research run instead of double-generating. The dashboard then ranks what's live with a **content-based recommender**: your reader profile is a weighted vector over interests, and each story is scored by cosine similarity blended with a region match and a freshness prior:
 
 $$\text{cosine}(\vec{u}, \vec{s}) = \frac{\vec{u} \cdot \vec{s}}{\|\vec{u}\| \, \|\vec{s}\|}$$
 
@@ -54,7 +54,7 @@ $$\text{cosine}(\vec{u}, \vec{s}) = \frac{\vec{u} \cdot \vec{s}}{\|\vec{u}\| \, 
 
 $$\text{MMR} = \lambda \cdot \text{score}(\vec{s}) - (1-\lambda) \cdot \max_{\vec{d} \in \text{picked}} \text{cosine}(\vec{s}, \vec{d})$$
 
-- **The video renderer.** A full Remotion composition (`remotion/StoryVideo.tsx` + `EarthScene.tsx`) turns the story into an actual documentary: a three.js Earth with an atmospheric glow shader and a procedural starfield, a camera that flies between event locations, kinetic captions, and the voice-over tracks. The twist: we render **in the browser** with `@remotion/web-renderer` — press a button, and a 1080p mp4 is encoded locally in a few seconds, with a progress bar and a download. No server farm, no render queue, no per-minute render bill — the server only ships the manifest and the Firebase audio URLs.
+- **The video renderer.** A full Remotion composition (`remotion/StoryVideo.tsx` + `EarthScene.tsx`) turns the story into an actual documentary: a three.js Earth with an atmospheric glow shader and a procedural starfield, a camera that flies between event locations, kinetic captions, and the voice-over tracks. The twist: we render **in the browser** with `@remotion/web-renderer`.
 
 ### The challenges we faced
 
@@ -75,7 +75,7 @@ $$\text{MMR} = \lambda \cdot \text{score}(\vec{s}) - (1-\lambda) \cdot \max_{\ve
 
 ## 🛠️ Built With
 
-`next.js` · `react` · `typescript` · `three.js` · `react-globe.gl` · `react-three-fiber` · `remotion` · `tailwindcss` · `neo4j` · `nebius-ai-studio` · `nvidia-nemotron` · `tavily` · `elevenlabs` · `openai-sdk` · `testcontainers` · `vitest` · `web-renderer` · `webcodecs` · `vercel` · `agentic-ai` · `knowledge-graph` · `rag` · `recommender-systems` · `llm` · `news`
+`next.js` · `react` · `typescript` · `three.js` · `react-globe.gl` · `react-three-fiber` · `remotion` · `tailwindcss` · `neo4j` · `nebius-ai-studio` · `nvidia-nemotron` · `tavily` · `elevenlabs` · `openai-sdk`· `web-renderer` · `webcodecs` · `vercel` · `agentic-ai` · `knowledge-graph` · `rag` · `recommender-systems` · `llm`
 
 ---
 
@@ -95,14 +95,11 @@ Open [http://localhost:3000](http://localhost:3000), type a topic, and press pla
 # Store stories in Neo4j (the shared knowledge graph) instead of JSON files
 STORY_STORE=neo4j NEO4J_URI=bolt://localhost:7687 ...
 
-# Graph-first research + the autonomous trend-sync worker
+# Graph-first research + the autonomous trend-sync worker. Each sync cycle
+# scrapes the Google Trends daily feeds (SCRAPE_GEOS, default
+# US,GB,IN,BR,DE,JP,AU,CA), classifies the trending topics and links stories
+# that already exist — stories themselves are researched lazily, when a
+# reader opens a trend card.
 npm run graph:import
 npm run sync:trends
-```
-
-### Tests
-
-```bash
-npm test          # 243 tests, incl. Neo4j via Testcontainers
-npm run test:cov
 ```

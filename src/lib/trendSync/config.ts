@@ -9,21 +9,12 @@ type Env = Record<string, string | undefined>;
 export interface SyncSettings {
   /** TREND_TRAFFIC_FLOOR: least TRENDED.traffic_value a topic needs. 0 also admits unknown traffic. */
   trafficFloor: number;
-  /** REFRESH_MIN_HOURS: a matching story younger than this is only linked, not refreshed. */
-  refreshMinHours: number;
-  /** MAX_NEW_STORIES_PER_CYCLE */
-  maxNewStories: number;
-  /** MAX_REFRESHES_PER_CYCLE */
-  maxRefreshes: number;
   /** SYNC_INTERVAL_MINUTES: pause between cycles with --loop. */
   intervalMinutes: number;
 }
 
 const DEFAULTS: SyncSettings = {
   trafficFloor: 1000,
-  refreshMinHours: 6,
-  maxNewStories: 3,
-  maxRefreshes: 5,
   intervalMinutes: 30,
 };
 
@@ -44,9 +35,6 @@ function readNumber(env: Env, name: string, fallback: number, rule: Rule): numbe
 export function syncSettingsFromEnv(env: Env = process.env): SyncSettings {
   return {
     trafficFloor: readNumber(env, "TREND_TRAFFIC_FLOOR", DEFAULTS.trafficFloor, "wholeAtLeastZero"),
-    refreshMinHours: readNumber(env, "REFRESH_MIN_HOURS", DEFAULTS.refreshMinHours, "positive"),
-    maxNewStories: readNumber(env, "MAX_NEW_STORIES_PER_CYCLE", DEFAULTS.maxNewStories, "wholeAtLeastZero"),
-    maxRefreshes: readNumber(env, "MAX_REFRESHES_PER_CYCLE", DEFAULTS.maxRefreshes, "wholeAtLeastZero"),
     intervalMinutes: readNumber(env, "SYNC_INTERVAL_MINUTES", DEFAULTS.intervalMinutes, "positive"),
   };
 }
